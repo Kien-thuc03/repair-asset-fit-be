@@ -94,8 +94,6 @@ async function bootstrap() {
     .addBearerAuth()
     .addTag("Auth", "Authentication and authorization")
     .addTag("Users", "User management")
-    .addTag("Repairs", "Repair request management")
-    .addTag("Technicians", "Technician management")
     .addBearerAuth({
       type: "http",
       scheme: "bearer",
