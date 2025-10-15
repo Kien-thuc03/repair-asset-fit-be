@@ -1,86 +1,177 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
-import * as bcrypt from 'bcryptjs';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { Repository } from "typeorm";
+import { InjectRepository } from "@nestjs/typeorm";
+import { User, UserStatus } from "src/entities/user.entity";
+import { errorResponse } from "src/common/helpers/error-response";
+import * as bcrypt from "bcryptjs";
+import { JwtPayload } from "./interfaces/jwt-payload.interface";
+import { LoginDto } from "./dtos/login.dto";
+import { ChangePasswordDto } from "./dtos/change-password.dto";
+import { UserProfileResponseDto } from "./dtos/user-profile-response.dto";
+import { UpdateProfileDto } from "./dtos/user-profile.dto";
+import { UserLoginResponse } from "./dtos/user-login-response.dto";
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
-  ) {}
+    constructor(
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
+        private readonly jwtService: JwtService,
+        private readonly logger: Logger,
+    ) { }
+    async login(
+        loginDto: LoginDto,
+    ): Promise<{ user: Omit<UserLoginResponse, 'password'>; token: string }> {
+        try {
+            const { username, password } = loginDto;
 
-  async validateUser(username: string, password: string): Promise<any> {
-    // Tìm user bằng username hoặc email
-    const user = await this.usersService.findByUsernameOrEmail(username);
-    
-    if (!user) {
-      return null;
+            const user = await this.validateUser(username, password);
+            if (!user) {
+                throw new UnauthorizedException(errorResponse('INVALID_CREDENTIALS', 'Invalid credentials'));
+            }
+
+            const roles = user.roles.map(role => role.code);
+            const permissions = user.roles.flatMap(role => role.permissions?.map(p => p.code) ?? []);
+
+            // Generate JWT token
+            const payload: JwtPayload = {
+                sub: user.id,
+                email: user.email,
+                roles: roles,
+                fullName: user.fullName,
+                permissions: permissions,
+            };
+
+            const token = this.jwtService.sign(payload);
+            const userLogin: UserLoginResponse = {
+                id: user.id,
+                username: user.username,
+                fullName: user.fullName,
+                roles: roles,
+                permissions: permissions,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                birthDate: user.birthDate
+            }
+        
+            return { user: userLogin, token };
+        } catch (e) {
+            this.logger.error(e, 'Login error:');
+            throw e;
+        }
     }
 
-    // Kiểm tra mật khẩu
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    
-    if (!isPasswordValid) {
-      return null;
+    async validateUser(username: string, password: string): Promise<User> {
+        const user = await this.userRepository.findOne({
+            where: { username, status: UserStatus.ACTIVE },
+            relations: ['roles', 'roles.permissions', 'unit'],
+        });
+        if (user && (await bcrypt.compare(password, user.password))) {
+            return user;
+        }
+        return null;
     }
 
-    // Kiểm tra trạng thái active
-    if (!user.isActive) {
-      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa');
+    async findUserById(sub: string): Promise<User> {
+        const user = await this.userRepository.findOne({
+            where: { id: sub, status: UserStatus.ACTIVE },
+            relations: ['roles', 'roles.permissions'],
+        });
+        if (!user) {
+            throw new UnauthorizedException(
+                errorResponse("NOT_FOUND", "User not found or inactive")
+            );
+        }
+        return user;
     }
 
-    // Loại bỏ password khỏi kết quả trả về
-    const { password: _, ...result } = user;
-    return result;
-  }
+    /**
+     * Change user password
+     * @description Change user password based on the provided ChangePasswordDto.
+     * @param changePasswordDto Data Transfer Object containing username, current password, new password, and confirm password
+     * @param currentUser 
+     * @returns A message indicating the result of the password change operation
+     */
+    async changePassword(
+        changePasswordDto: ChangePasswordDto,
+        currentUser?: User
+    ): Promise<{ message: string }> {
 
-  async login(user: any) {
-    const payload = { 
-      username: user.username,
-      email: user.email, 
-      sub: user.id, 
-      role: user.role 
-    };
-    
-    return {
-      access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        phone: user.phone,
-      },
-    };
-  }
+        if (changePasswordDto.newPassword !== changePasswordDto.confirmPassword) {
+            throw new BadRequestException(
+                errorResponse("PASSWORD_MISMATCH", "New password and confirm password do not match")
+            );
+        }
 
-  async register(userData: any) {
-    // Kiểm tra xem username đã tồn tại chưa
-    const existingUser = await this.usersService.findByUsername(userData.username);
-    if (existingUser) {
-      throw new UnauthorizedException('Tên đăng nhập đã tồn tại');
+        if(!currentUser?.id) {
+            throw new UnauthorizedException(
+                errorResponse("UNAUTHORIZED", "User not authenticated")
+            );
+        }
+
+        let user = await this.userRepository.findOne({
+            where: { id: currentUser.id, status: UserStatus.ACTIVE },
+        });
+
+        if (!user) {
+            throw new UnauthorizedException(
+                errorResponse("NOT_FOUND", "User not found or inactive")
+            );
+        }
+
+        const isMatch = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
+        if (!isMatch) {
+            throw new UnauthorizedException(
+                errorResponse("INVALID_CREDENTIALS", "Invalid current password")
+            );
+        }
+
+        user.password = await bcrypt.hash(changePasswordDto.newPassword, 12);
+        await this.userRepository.save(user);
+
+        return { message: 'Password changed successfully' };
     }
 
-    // Kiểm tra xem email đã tồn tại chưa
-    const existingEmail = await this.usersService.findByEmail(userData.email);
-    if (existingEmail) {
-      throw new UnauthorizedException('Email đã được sử dụng');
-    }
+    /**
+     * Update user profile
+     * @description Update user profile based on the provided UpdateProfileDto.
+     * @param updateProfileDto Data to update user profile
+     * @param currentUser 
+     * @returns 
+     */
+    async updateProfile(
+        updateProfileDto: UpdateProfileDto,
+        currentUser?: User
+    ): Promise<UserProfileResponseDto> {
+        if(!currentUser?.id) {
+            throw new UnauthorizedException(
+                errorResponse("UNAUTHORIZED", "User not authenticated")
+            );
+        }
 
-    // Mã hóa mật khẩu
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-    
-    // Tạo user mới
-    const user = await this.usersService.create({
-      ...userData,
-      password: hashedPassword,
-    });
-    
-    // Loại bỏ password khỏi kết quả
-    const { password, ...result } = user;
-    return result;
-  }
+        let user = await this.userRepository.findOne({
+            where: { id: currentUser.id, status: UserStatus.ACTIVE },
+        });
+
+        if (!user) {
+            throw new UnauthorizedException(
+                errorResponse("NOT_FOUND", "User not found or inactive")
+            );
+        }
+
+        user.fullName = updateProfileDto.fullName;
+        user.email = updateProfileDto.email;
+        user.phoneNumber = updateProfileDto.phoneNumber;
+        user.birthDate = updateProfileDto.birthDate;
+
+        user = await this.userRepository.save(user);
+
+        return {
+            fullName: user.fullName,
+            email: user.email,
+            phoneNumber: user.phoneNumber,
+            birthDate: user.birthDate,
+        };
+    }
 }
