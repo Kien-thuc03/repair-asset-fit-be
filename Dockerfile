@@ -10,14 +10,14 @@ RUN npm install -g pnpm
 # Copy package files for dependency resolution
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY . .
-
 # Build stage
 FROM base AS builder
+
+# Install ALL dependencies (including devDependencies for building)
+RUN pnpm install --frozen-lockfile
+
+# Copy source code (node_modules will NOT be copied due to .dockerignore)
+COPY . .
 
 # Build the application
 RUN pnpm run build
@@ -43,9 +43,6 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
-
-# Copy necessary files
-COPY --from=builder /app/templates ./templates
 
 # Create uploads directory with proper permissions (will be volume mounted)
 RUN mkdir -p uploads/images uploads/documents
