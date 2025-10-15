@@ -7,6 +7,10 @@ import { TypeOrmAsyncConfig } from "./common/config/typeorm.config";
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { UnitsModule } from './modules/units/units.module';
+import { RoomsModule } from './modules/rooms/rooms.module';
+import { RolesModule } from './modules/roles/roles.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
 
 @Module({
   imports: [
@@ -35,6 +39,10 @@ import { RedisModule } from './modules/redis/redis.module';
     AuthModule,
     UsersModule,
     RedisModule,
+    UnitsModule,
+    RoomsModule,
+    RolesModule,
+    PermissionsModule,
   ],
   controllers: [],
   providers: [

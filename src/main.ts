@@ -92,8 +92,6 @@ async function bootstrap() {
     .setDescription("Repair Asset FIT Management API")
     .setVersion("1.0")
     .addBearerAuth()
-    .addTag("Auth", "Authentication and authorization")
-    .addTag("Users", "User management")
     .addBearerAuth({
       type: "http",
       scheme: "bearer",

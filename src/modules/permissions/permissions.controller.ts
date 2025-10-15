@@ -17,12 +17,13 @@ import {
   ManagerPermissionResponseDto,
   PermissionResponseDto,
 } from "./dtos/manager-permission-response.dto";
-import { ApiBearerAuth, ApiBody, ApiResponse } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiBody, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
 import { Permissions } from "../auth/decorators/permissions.decorator";
 import { PermissionConstants } from "src/common/utils/permission.constant";
 
+@ApiTags("Manager Permissions")
 @Controller("api/v1/manager-permissions")
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
