@@ -2,6 +2,9 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
   ManyToMany,
   JoinTable,
 } from "typeorm";
@@ -18,6 +21,15 @@ export class Role {
 
   @Column({ unique: true })
   code: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 
   // Relations
   @ManyToMany(() => Permission, (permission) => permission.roles)
