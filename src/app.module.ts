@@ -6,11 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TypeOrmAsyncConfig } from "./common/config/typeorm.config";
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
-import { RepairsModule } from './modules/repairs/repairs.module';
-import { TechniciansModule } from './modules/technicians/technicians.module';
-import { FilesModule } from './modules/files/files.module';
 import { RedisModule } from './modules/redis/redis.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -38,11 +34,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     ]),
     AuthModule,
     UsersModule,
-    RepairsModule,
-    TechniciansModule,
-    FilesModule,
     RedisModule,
-    NotificationsModule,
   ],
   controllers: [],
   providers: [
