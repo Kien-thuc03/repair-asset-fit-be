@@ -1,92 +1,90 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  DeleteDateColumn,
-  OneToMany,
-  ManyToMany,
-  JoinTable,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    CreateDateColumn,
+    UpdateDateColumn,
+    DeleteDateColumn,
+    ManyToOne,
+    ManyToMany,
+    JoinTable,
+    JoinColumn,
+    OneToMany,
 } from 'typeorm';
-import { UserRole } from '../common/utils/constants';
-import { Notification } from './notification.entity';
 import { Role } from './role.entity';
+import { Unit } from './unit.entity';
+import { Asset } from './asset.entity';
+import { InventorySession } from './inventory-session.entity';
+import { Alert } from './alert.entity';
 
 export enum UserStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-  LOCKED = 'LOCKED',
-  DELETED = 'DELETED',
+    ACTIVE = 'ACTIVE',
+    INACTIVE = 'INACTIVE',
+    LOCKED = 'LOCKED',
+    DELETED = 'DELETED',
 }
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-  @Column({ unique: true })
-  username: string;
+    @Column({ unique: true })
+    username: string;
 
-  @Column({ unique: true })
-  email: string;
+    @Column()
+    password: string;
 
-  @Column()
-  password: string;
+    @Column()
+    fullName: string;
 
-  @Column({ nullable: true })
-  firstName: string;
+    @Column({ unique: true })
+    email: string;
 
-  @Column({ nullable: true })
-  lastName: string;
+    @Column({ nullable: true })
+    unitId?: string;
 
-  @Column()
-  fullName: string;
+    @Column({ nullable: true })
+    phoneNumber?: string;
 
-  @Column({ nullable: true })
-  phone: string;
+    @Column({ type: 'date', nullable: true })
+    birthDate?: string;
 
-  @Column({ nullable: true })
-  phoneNumber?: string;
+    @Column({
+        type: 'enum',
+        enum: UserStatus,
+        default: UserStatus.ACTIVE,
+    })
+    status: UserStatus;
 
-  @Column({ type: 'date', nullable: true })
-  birthDate?: string;
+    @CreateDateColumn()
+    createdAt: Date;
 
-  @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.USER,
-    nullable: true,
-  })
-  role: UserRole;
+    @UpdateDateColumn()
+    updatedAt: Date;
 
-  @Column({
-    type: 'enum',
-    enum: UserStatus,
-    default: UserStatus.ACTIVE,
-  })
-  status: UserStatus;
+    @DeleteDateColumn()
+    deletedAt?: Date;
 
-  @Column({ default: true })
-  isActive: boolean;
+    // Relations
+    @ManyToMany(() => Role, (role) => role.users)
+    @JoinTable({
+        name: 'user_roles',
+        joinColumn: { name: 'userId', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' },
+    })
+    roles?: Role[];
 
-  @CreateDateColumn()
-  createdAt: Date;
+    @ManyToOne(() => Unit, (unit) => unit.users)
+    @JoinColumn({ name: 'unitId' })
+    unit?: Unit;
 
-  @UpdateDateColumn()
-  updatedAt: Date;
+    @OneToMany(() => Asset, (asset) => asset.creator)
+    createdAssets?: Asset[];
 
-  @DeleteDateColumn()
-  deletedAt?: Date;
+    @OneToMany(() => InventorySession, (inventorySession) => inventorySession.creator)
+    createdInventorySessions?: InventorySession[];
 
-  @OneToMany(() => Notification, notification => notification.user)
-  notifications: Notification[];
-
-  @ManyToMany(() => Role, (role) => role.users)
-  @JoinTable({
-    name: 'user_roles',
-    joinColumn: { name: 'userId', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'roleId', referencedColumnName: 'id' },
-  })
-  roles?: Role[];
+    @OneToMany(() => Alert, (alert) => alert.resolver)
+    alerts?: Alert[];
 }

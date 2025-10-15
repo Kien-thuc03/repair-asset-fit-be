@@ -3,38 +3,24 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToOne,
-  JoinColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
-import { RepairRequest } from './repair-request.entity';
 
 @Entity('file_urls')
 export class FileUrl {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  fileName: string;
-
-  @Column()
-  originalName: string;
-
-  @Column()
-  mimeType: string;
-
-  @Column()
-  fileSize: number;
-
-  @Column()
+  @Column({ comment: 'URL của file' })
   url: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'createdAt' })
   createdAt: Date;
 
-  @ManyToOne(() => RepairRequest, repairRequest => repairRequest.attachments)
-  @JoinColumn({ name: 'repair_request_id' })
-  repairRequest: RepairRequest;
+  @UpdateDateColumn({ name: 'updatedAt' })
+  updatedAt: Date;
 
-  @Column()
-  repairRequestId: string;
+  @DeleteDateColumn({ name: 'deletedAt' })
+  deletedAt?: Date;
 }
