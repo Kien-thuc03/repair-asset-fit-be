@@ -13,7 +13,7 @@ import { User } from 'src/entities/user.entity';
 import { UpdateProfileDto } from './dtos/user-profile.dto';
 import { UserProfileResponseDto } from './dtos/user-profile-response.dto';
 
-@ApiTags('Authentication')
+@ApiTags('Auth')
 @Controller('api/v1/auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) { }
