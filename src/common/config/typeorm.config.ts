@@ -58,6 +58,10 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME || "asset",
+      // SSL Configuration for cloud databases (Render, etc.)
+      ssl: process.env.DB_HOST?.includes('render.com') ? {
+        rejectUnauthorized: false
+      } : false,
       // Connection pool configuration
       extra: {
         connectionLimit: 5,
@@ -133,6 +137,10 @@ const dataSource = new DataSource({
   username: process.env.DB_USERNAME || "postgres",
   password: process.env.DB_PASSWORD || "postgres",
   database: process.env.DB_NAME || "asset",
+  // SSL Configuration for cloud databases (Render, etc.)
+  ssl: process.env.DB_HOST?.includes('render.com') ? {
+    rejectUnauthorized: false
+  } : false,
   extra: {
     connectionLimit: 3,
     acquireTimeout: 20000,
