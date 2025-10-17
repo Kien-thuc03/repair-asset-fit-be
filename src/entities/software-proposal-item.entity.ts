@@ -1,45 +1,45 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  JoinColumn,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    ManyToOne,
+    JoinColumn,
 } from 'typeorm';
 import { SoftwareProposal } from './software-proposal.entity';
 import { Software } from './software.entity';
 
-@Entity('softwareProposalItems')
+@Entity('software_proposal_items')
 export class SoftwareProposalItem {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-  @Column({ name: 'proposalId' })
-  proposalId: string;
+    @Column()
+    proposalId: string;
 
-  @Column({ type: 'text', name: 'softwareName' })
-  softwareName: string;
+    @Column({ comment: 'Tên phần mềm cần mua' })
+    softwareName: string;
 
-  @Column({ type: 'text', nullable: true })
-  version: string;
+    @Column({ nullable: true })
+    version?: string;
 
-  @Column({ type: 'text', nullable: true })
-  publisher: string;
+    @Column({ nullable: true, comment: 'Nhà sản xuất' })
+    publisher?: string;
 
-  @Column({ type: 'int', default: 1 })
-  quantity: number;
+    @Column({ default: 1, comment: 'Số lượng license cần mua' })
+    quantity: number;
 
-  @Column({ type: 'text', nullable: true, name: 'licenseType' })
-  licenseType: string;
+    @Column({ nullable: true, comment: 'Loại giấy phép: Vĩnh viễn, Theo năm...' })
+    licenseType?: string;
 
-  @Column({ name: 'newlyAcquiredSoftwareId', nullable: true })
-  newlyAcquiredSoftwareId: string;
+    @Column({ nullable: true, comment: 'ID trong bảng Software sau khi được thêm vào' })
+    newlyAcquiredSoftwareId?: string;
 
-  // Relations
-  @ManyToOne(() => SoftwareProposal, (proposal) => proposal.items)
-  @JoinColumn({ name: 'proposalId' })
-  proposal: SoftwareProposal;
+    // Relations
+    @ManyToOne(() => SoftwareProposal, (proposal) => proposal.items)
+    @JoinColumn({ name: 'proposalId' })
+    proposal: SoftwareProposal;
 
-  @ManyToOne(() => Software, { nullable: true })
-  @JoinColumn({ name: 'newlyAcquiredSoftwareId' })
-  newlyAcquiredSoftware?: Software;
+    @ManyToOne(() => Software, (software) => software.proposalItems, { nullable: true })
+    @JoinColumn({ name: 'newlyAcquiredSoftwareId' })
+    newlyAcquiredSoftware?: Software;
 }

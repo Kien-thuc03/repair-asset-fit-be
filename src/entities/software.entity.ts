@@ -1,30 +1,43 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  OneToMany,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    CreateDateColumn,
+    ManyToMany,
+    OneToMany,
+    UpdateDateColumn,
+    DeleteDateColumn,
 } from 'typeorm';
-import { AssetSoftware } from './asset-software.entity';
+import { Asset } from './asset.entity';
+import { SoftwareProposalItem } from './software-proposal-item.entity';
 
 @Entity('software')
 export class Software {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-  @Column({ type: 'text' })
-  name: string;
+    @Column({ comment: 'Tên phần mềm, vd: Microsoft Office 2021, AutoCAD 2024' })
+    name: string;
 
-  @Column({ type: 'text', nullable: true })
-  version: string;
+    @Column({ nullable: true, comment: 'Phiên bản phần mềm' })
+    version?: string;
 
-  @Column({ type: 'text', nullable: true })
-  publisher: string;
+    @Column({ nullable: true, comment: 'Nhà sản xuất' })
+    publisher?: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+    @CreateDateColumn()
+    createdAt: Date;
 
-  // Relations
-  @OneToMany(() => AssetSoftware, (assetSoftware) => assetSoftware.software)
-  assetSoftware?: AssetSoftware[];
+    @UpdateDateColumn()
+    updatedAt: Date;
+
+    @DeleteDateColumn()
+    deletedAt?: Date;
+
+    // Relations
+    @ManyToMany(() => Asset, (asset) => asset.software)
+    assets?: Asset[];
+
+    @OneToMany(() => SoftwareProposalItem, (item) => item.newlyAcquiredSoftware)
+    proposalItems?: SoftwareProposalItem[];
 }

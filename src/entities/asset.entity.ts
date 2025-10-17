@@ -11,6 +11,8 @@ import {
     TableInheritance,
     ChildEntity,
     OneToMany,
+    ManyToMany,
+    JoinTable,
 } from 'typeorm';
 import { Category } from './category.entity';
 import { User } from './user.entity';
@@ -18,9 +20,13 @@ import { Room } from './room.entity';
 import { RfidTag } from './rfid-tag.entity';
 import { AssetType } from 'src/common/shared/AssetType';
 import { AssetStatus } from 'src/common/shared/AssetStatus';
+import { AssetShape } from 'src/common/shared/AssetShape';
 import { InventoryResult } from './inventory-result';
 import { AssetBookItem } from './asset-book-item.entity';
 import { Alert } from './alert.entity';
+import { Software } from './software.entity';
+import { RepairRequest } from './repair-request.entity';
+import { Computer } from './computer.entity';
 
 
 @Entity('assets')
@@ -84,6 +90,14 @@ export class Asset {
     })
     status: AssetStatus;
 
+    @Column({
+        type: 'enum',
+        enum: AssetShape,
+        default: AssetShape.COMPUTER,
+        comment: 'Dạng tài sản',
+    })
+    shape: AssetShape;
+
     @Column({ name: 'allow_move', default: true, comment: 'Cho phép di chuyển' })
     allowMove: boolean;
 
@@ -120,6 +134,20 @@ export class Asset {
 
     @OneToMany(() => Alert, (alert) => alert.asset)
     alerts?: Alert[];
+
+    @ManyToMany(() => Software, (software) => software.assets)
+    @JoinTable({
+        name: 'asset_software',
+        joinColumn: { name: 'assetId', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'softwareId', referencedColumnName: 'id' },
+    })
+    software?: Software[];
+
+    @OneToMany(() => RepairRequest, (repairRequest) => repairRequest.computerAsset)
+    repairRequests?: RepairRequest[];
+
+    @OneToOne(() => Computer, (computer) => computer.asset)
+    computer?: Computer;
 }
 
 // Child entities for inheritance

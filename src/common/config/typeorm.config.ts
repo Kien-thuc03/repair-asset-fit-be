@@ -25,28 +25,19 @@ import { InventoryResult } from "src/entities/inventory-result";
 import { AssetBook } from "src/entities/asset-book.entity";
 import { AssetBookItem } from "src/entities/asset-book-item.entity";
 import { Alert } from "src/entities/alert.entity";
+//repair entities
 import { Computer } from "src/entities/computer.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
 import { Software } from "src/entities/software.entity";
 import { AssetSoftware } from "src/entities/asset-software.entity";
 import { ErrorType } from "src/entities/error-type.entity";
-import { DamageReport } from "src/entities/damage-report.entity";
 import { RepairRequest } from "src/entities/repair-request.entity";
 import { RepairLog } from "src/entities/repair-log.entity";
-import { RepairRequestComponent } from "src/entities/repair-request-component.entity";
-import { AssetTransaction } from "src/entities/asset-transaction.entity";
-import { AssetTransactionItem } from "src/entities/asset-transaction-item.entity";
-import { LiquidationProposal } from "src/entities/liquidation-proposal.entity";
-import { LiquidationProposalItem } from "src/entities/liquidation-proposal-item.entity";
 import { ReplacementProposal } from "src/entities/replacement-proposal.entity";
 import { ReplacementItem } from "src/entities/replacement-item.entity";
-import { AlertResolution } from "src/entities/alert-resolution.entity";
-import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { SoftwareProposal } from "src/entities/software-proposal.entity";
 import { SoftwareProposalItem } from "src/entities/software-proposal-item.entity";
-import { ProposalRepairRequest } from "src/entities/proposal-repair-request.entity";
-import { InventoryCommittee } from "src/entities/inventory-committee.entity";
-import { InventoryCommitteeMember } from "src/entities/inventory-committee-member.entity";
+import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 
 export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
   imports: [],
@@ -74,19 +65,22 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         reconnectDelay: 2000,
       },
       entities: [
-        Permission, 
-        Role, 
-        Unit, 
-        User, 
-        ManagerPermission, 
-        Category, 
-        Room, 
-        Asset, 
-        RfidTag, 
-        FixedAsset, 
-        ToolsEquipment, 
-        FileUrl, 
-        InventorySession, 
+        User,
+        Role,
+        Permission,
+        ManagerPermission,
+        Unit,
+        Room,
+        Category,
+        Asset,
+        FixedAsset,
+        ToolsEquipment,
+        RfidTag,
+        FileUrl,
+        AssetBook,
+        AssetBookItem,
+        Alert,
+        InventorySession,
         InventorySessionUnit,
         InventorySessionMember,
         InventorySub,
@@ -95,33 +89,22 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         InventoryGroupMember,
         InventoryGroupAssignment,
         InventoryResult,
-        AssetBook,
-        AssetBookItem,
-        Alert,
+        // Repair entities
         Computer,
         ComputerComponent,
-        Software,
-        AssetSoftware,
         ErrorType,
-        DamageReport,
         RepairRequest,
         RepairLog,
-        RepairRequestComponent,
-        AssetTransaction,
-        AssetTransactionItem,
-        LiquidationProposal,
-        LiquidationProposalItem,
         ReplacementProposal,
         ReplacementItem,
-        AlertResolution,
-        TechnicianAssignment,
+        // Software entities
+        Software,
+        AssetSoftware,
         SoftwareProposal,
         SoftwareProposalItem,
-        ProposalRepairRequest,
-        InventoryCommittee,
-        InventoryCommitteeMember
+        TechnicianAssignment,
       ],
-      synchronize: false,
+      synchronize: true, // WARNING: Use only in development! dùng để tự dộng đồng bộ database
       logging: false,
       migrations: [__dirname + "/../../migrations/*{.ts,.js}"],
       migrationsTableName: "typeorm_migrations",
@@ -147,19 +130,22 @@ const dataSource = new DataSource({
     timeout: 20000,
   },
   entities: [
-    Permission, 
-    Role, 
-    Unit, 
-    User, 
-    ManagerPermission, 
-    Category, 
-    Room, 
-    Asset, 
-    FixedAsset, 
-    ToolsEquipment, 
-    RfidTag, 
-    FileUrl, 
-    InventorySession, 
+    User,
+    Role,
+    Permission,
+    ManagerPermission,
+    Unit,
+    Room,
+    Category,
+    Asset,
+    FixedAsset,
+    ToolsEquipment,
+    RfidTag,
+    FileUrl,
+    AssetBook,
+    AssetBookItem,
+    Alert,
+    InventorySession,
     InventorySessionUnit,
     InventorySessionMember,
     InventorySub,
@@ -168,31 +154,20 @@ const dataSource = new DataSource({
     InventoryGroupMember,
     InventoryGroupAssignment,
     InventoryResult,
-    AssetBook,
-    AssetBookItem,
-    Alert,
+    // Repair entities
     Computer,
     ComputerComponent,
-    Software,
-    AssetSoftware,
     ErrorType,
-    DamageReport,
     RepairRequest,
     RepairLog,
-    RepairRequestComponent,
-    AssetTransaction,
-    AssetTransactionItem,
-    LiquidationProposal,
-    LiquidationProposalItem,
     ReplacementProposal,
     ReplacementItem,
-    AlertResolution,
-    TechnicianAssignment,
+    // Software entities
+    Software,
+    AssetSoftware,
     SoftwareProposal,
     SoftwareProposalItem,
-    ProposalRepairRequest,
-    InventoryCommittee,
-    InventoryCommitteeMember
+    TechnicianAssignment,
   ],
   migrations: [__dirname + "/../../migrations/*{.ts,.js}"],
   migrationsTableName: "typeorm_migrations",

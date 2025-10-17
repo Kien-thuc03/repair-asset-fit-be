@@ -1,84 +1,95 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  JoinColumn,
-  CreateDateColumn,
-  OneToMany,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    ManyToOne,
+    JoinColumn,
+    CreateDateColumn,
+    OneToMany,
+    ManyToMany,
+    JoinTable,
 } from 'typeorm';
-import { Computer } from './computer.entity';
+import { Asset } from './asset.entity';
 import { User } from './user.entity';
 import { ErrorType } from './error-type.entity';
-import { RepairStatus } from 'src/common/shared/RepairStatus';
+import { RepairStatus } from '../common/shared/RepairStatus';
 import { RepairLog } from './repair-log.entity';
-import { RepairRequestComponent } from './repair-request-component.entity';
+import { ComputerComponent } from './computer-component.entity';
+import { ReplacementProposal } from './replacement-proposal.entity';
 
-@Entity('repairRequests')
+@Entity('repair_requests')
 export class RepairRequest {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-  @Column({ type: 'text', name: 'requestCode' })
-  requestCode: string;
+    @Column({ unique: true, comment: 'Mã yêu cầu tự tăng, vd: YCSC-2025-0001' })
+    requestCode: string;
 
-  @Column({ name: 'computerAssetId' })
-  computerAssetId: string;
+    @Column({ comment: 'Tài sản (máy tính) gặp sự cố' })
+    computerAssetId: string;
 
-  @Column({ name: 'reporterId' })
-  reporterId: string;
+    @Column({ comment: 'Người báo lỗi (Giảng viên hoặc KTV)' })
+    reporterId: string;
 
-  @Column({ name: 'assignedTechnicianId', nullable: true })
-  assignedTechnicianId: string;
+    @Column({ nullable: true, comment: 'KTV được phân công xử lý' })
+    assignedTechnicianId?: string;
 
-  @Column({ name: 'errorTypeId', nullable: true })
-  errorTypeId: string;
+    @Column({ nullable: true, comment: 'Phân loại lỗi theo danh mục có sẵn' })
+    errorTypeId?: string;
 
-  @Column({ type: 'text' })
-  description: string;
+    @Column({ type: 'text', comment: 'Mô tả chi tiết tình trạng lỗi' })
+    description: string;
 
-  @Column({ type: 'text', nullable: true, name: 'mediaUrls' })
-  mediaUrls: string;
+    @Column({ type: 'simple-array', nullable: true, comment: 'Mảng các đường dẫn ảnh/video minh họa lỗi' })
+    mediaUrls?: string[];
 
-  @Column({
-    type: 'enum',
-    enum: RepairStatus,
-    default: RepairStatus.CHỜ_TIẾP_NHẬN,
-  })
-  status: RepairStatus;
+    @Column({
+        type: 'enum',
+        enum: RepairStatus,
+        default: RepairStatus.CHỜ_TIẾP_NHẬN,
+    })
+    status: RepairStatus;
 
-  @Column({ type: 'text', nullable: true, name: 'resolutionNotes' })
-  resolutionNotes: string;
+    @Column({ type: 'text', nullable: true, comment: 'Ghi chú của KTV về kết quả xử lý (sửa được gì, thay thế ra sao)' })
+    resolutionNotes?: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+    @CreateDateColumn({ comment: 'Thời điểm báo lỗi' })
+    createdAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'acceptedAt' })
-  acceptedAt: Date;
+    @Column({ type: 'timestamp', nullable: true, comment: 'Thời điểm KTV tiếp nhận' })
+    acceptedAt?: Date;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'completedAt' })
-  completedAt: Date;
+    @Column({ type: 'timestamp', nullable: true, comment: 'Thời điểm hoàn tất xử lý' })
+    completedAt?: Date;
 
-  // Relations
-  @ManyToOne(() => Computer)
-  @JoinColumn({ name: 'computerAssetId' })
-  computer: Computer;
+    // Relations
+    @ManyToOne(() => Asset)
+    @JoinColumn({ name: 'computerAssetId' })
+    computerAsset: Asset;
 
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'reporterId' })
-  reporter: User;
+    @ManyToOne(() => User)
+    @JoinColumn({ name: 'reporterId' })
+    reporter: User;
 
-  @ManyToOne(() => User, { nullable: true })
-  @JoinColumn({ name: 'assignedTechnicianId' })
-  assignedTechnician?: User;
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: 'assignedTechnicianId' })
+    assignedTechnician?: User;
 
-  @ManyToOne(() => ErrorType, { nullable: true })
-  @JoinColumn({ name: 'errorTypeId' })
-  errorType?: ErrorType;
+    @ManyToOne(() => ErrorType, (errorType) => errorType.repairRequests, { nullable: true })
+    @JoinColumn({ name: 'errorTypeId' })
+    errorType?: ErrorType;
 
-  @OneToMany(() => RepairLog, (log) => log.repairRequest)
-  logs?: RepairLog[];
+    @OneToMany(() => RepairLog, (log) => log.repairRequest)
+    logs?: RepairLog[];
 
-  @OneToMany(() => RepairRequestComponent, (component) => component.repairRequest)
-  components?: RepairRequestComponent[];
+    @ManyToMany(() => ComputerComponent, (component) => component.repairRequests)
+    @JoinTable({
+        name: 'repair_request_components',
+        joinColumn: { name: 'repairRequestId', referencedColumnName: 'id' },
+        inverseJoinColumn: { name: 'componentId', referencedColumnName: 'id' },
+    })
+    components?: ComputerComponent[];
+
+    @ManyToMany(() => ReplacementProposal, (proposal) => proposal.repairRequests)
+    replacementProposals?: ReplacementProposal[];
 }

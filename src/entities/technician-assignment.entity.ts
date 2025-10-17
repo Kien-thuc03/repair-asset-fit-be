@@ -1,24 +1,25 @@
 import {
-  Entity,
-  PrimaryColumn,
-  ManyToOne,
-  JoinColumn,
+    Entity,
+    Column,
+    PrimaryColumn,
+    ManyToOne,
+    JoinColumn,
 } from 'typeorm';
 import { User } from './user.entity';
 
-@Entity('technicianAssignments')
+@Entity('technician_assignments')
 export class TechnicianAssignment {
-  @PrimaryColumn({ name: 'technicianId' })
-  technicianId: string;
+    @PrimaryColumn({ comment: 'ID của Kỹ thuật viên' })
+    technicianId: string;
 
-  @PrimaryColumn({ type: 'text' })
-  building: string;
+    @PrimaryColumn({ comment: 'Tên tòa nhà được phân công' })
+    building: string;
 
-  @PrimaryColumn({ type: 'text' })
-  floor: string;
+    @Column({ nullable: true, comment: 'Tên tầng được phân công, null nếu quản lý cả tòa' })
+    floor?: string;
 
-  // Relations
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'technicianId' })
-  technician: User;
+    // Relations
+    @ManyToOne(() => User)
+    @JoinColumn({ name: 'technicianId' })
+    technician: User;
 }

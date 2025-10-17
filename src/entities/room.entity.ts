@@ -19,6 +19,8 @@ import { Asset } from "./asset.entity";
 import { AssetBookItem } from "./asset-book-item.entity";
 import { InventoryResult } from "./inventory-result";
 import { Alert } from "./alert.entity";
+import { SoftwareProposal } from "./software-proposal.entity";
+import { Computer } from "./computer.entity";
 
 @Entity("rooms")
 @Unique("unique_room_location", ["building", "floor", "roomNumber", "unitId"])
@@ -87,4 +89,10 @@ export class Room {
 
     @OneToMany(() => Alert, (alert) => alert.room)
     alerts?: Alert[];
+
+    @OneToMany(() => SoftwareProposal, (proposal) => proposal.room)
+    softwareProposals?: SoftwareProposal[];
+
+    @OneToMany(() => Computer, (computer) => computer.room)
+    computers?: Computer[];
 }

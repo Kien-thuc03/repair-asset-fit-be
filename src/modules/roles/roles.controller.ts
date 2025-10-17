@@ -21,9 +21,7 @@ import {
 import { RolesService } from "./roles.service";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
-import {
-  RoleResponseDto,
-} from "./dto/role-response.dto";
+import { RoleResponseDto } from "./dto/role-response.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
 import { Permissions } from "../auth/decorators/permissions.decorator";

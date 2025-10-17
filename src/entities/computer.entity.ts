@@ -1,45 +1,44 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  JoinColumn,
-  OneToMany,
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    ManyToOne,
+    JoinColumn,
+    OneToMany,
+    OneToOne,
+    Unique,
 } from 'typeorm';
 import { Asset } from './asset.entity';
 import { Room } from './room.entity';
 import { ComputerComponent } from './computer-component.entity';
-import { AssetSoftware } from './asset-software.entity';
 
 @Entity('computers')
+@Unique('unique_room_machine_label', ['roomId', 'machineLabel'])
 export class Computer {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
 
-  @Column({ name: 'assetId' })
-  assetId: string;
+    @Column({ unique: true, comment: 'ID của tài sản (máy tính)' })
+    assetId: string;
 
-  @Column({ name: 'roomId' })
-  roomId: string;
+    @Column({ comment: 'Vị trí của máy tính này' })
+    roomId: string;
 
-  @Column({ name: 'machineLabel' })
-  machineLabel: string;
+    @Column({ comment: 'Số máy' })
+    machineLabel: string;
 
-  @Column({ type: 'text', nullable: true })
-  notes: string;
+    @Column({ type: 'text', nullable: true })
+    notes?: string;
 
-  // Relations
-  @ManyToOne(() => Asset, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'assetId' })
-  asset: Asset;
+    // Relations
+    @OneToOne(() => Asset, (asset) => asset.computer)
+    @JoinColumn({ name: 'assetId' })
+    asset: Asset;
 
-  @ManyToOne(() => Room, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'roomId' })
-  room: Room;
+    @ManyToOne(() => Room)
+    @JoinColumn({ name: 'roomId' })
+    room: Room;
 
-  @OneToMany(() => ComputerComponent, (component) => component.computer)
-  components?: ComputerComponent[];
-
-  @OneToMany(() => AssetSoftware, (software) => software.computer)
-  software?: AssetSoftware[];
+    @OneToMany(() => ComputerComponent, (component) => component.computer)
+    components?: ComputerComponent[];
 }

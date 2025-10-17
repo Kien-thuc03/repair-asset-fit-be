@@ -16,6 +16,11 @@ import { Unit } from './unit.entity';
 import { Asset } from './asset.entity';
 import { InventorySession } from './inventory-session.entity';
 import { Alert } from './alert.entity';
+import { RepairRequest } from './repair-request.entity';
+import { RepairLog } from './repair-log.entity';
+import { ReplacementProposal } from './replacement-proposal.entity';
+import { SoftwareProposal } from './software-proposal.entity';
+import { TechnicianAssignment } from './technician-assignment.entity';
 
 export enum UserStatus {
     ACTIVE = 'ACTIVE',
@@ -87,4 +92,31 @@ export class User {
 
     @OneToMany(() => Alert, (alert) => alert.resolver)
     alerts?: Alert[];
+
+    @OneToMany(() => RepairRequest, (request) => request.reporter)
+    reportedRepairRequests?: RepairRequest[];
+
+    @OneToMany(() => RepairRequest, (request) => request.assignedTechnician)
+    assignedRepairRequests?: RepairRequest[];
+
+    @OneToMany(() => RepairLog, (log) => log.actor)
+    repairLogs?: RepairLog[];
+
+    @OneToMany(() => ReplacementProposal, (proposal) => proposal.proposer)
+    proposedReplacements?: ReplacementProposal[];
+
+    @OneToMany(() => ReplacementProposal, (proposal) => proposal.teamLeadApprover)
+    approvedReplacements?: ReplacementProposal[];
+
+    @OneToMany(() => ReplacementProposal, (proposal) => proposal.adminVerifier)
+    verifiedReplacements?: ReplacementProposal[];
+
+    @OneToMany(() => SoftwareProposal, (proposal) => proposal.proposer)
+    proposedSoftware?: SoftwareProposal[];
+
+    @OneToMany(() => SoftwareProposal, (proposal) => proposal.approver)
+    approvedSoftware?: SoftwareProposal[];
+
+    @OneToMany(() => TechnicianAssignment, (assignment) => assignment.technician)
+    technicianAssignments?: TechnicianAssignment[];
 }
