@@ -91,15 +91,15 @@ async function bootstrap() {
     .setTitle("Repair Asset FIT API")
     .setDescription("Repair Asset FIT Management API")
     .setVersion("1.0")
-    .addBearerAuth()
-    .addBearerAuth({
-      type: "http",
-      scheme: "bearer",
-      bearerFormat: "JWT",
-      name: JWT_BEARER_PREFIX,
-      description: "Enter JWT token",
-      in: "header",
-    })
+    // .addBearerAuth()
+    // .addBearerAuth({
+    //   type: "http",
+    //   scheme: "bearer",
+    //   bearerFormat: "JWT",
+    //   name: JWT_BEARER_PREFIX,
+    //   description: "Enter JWT token",
+    //   in: "header",
+    // })
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
