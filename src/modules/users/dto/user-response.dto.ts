@@ -2,7 +2,8 @@ import { ApiProperty } from "@nestjs/swagger";
 import { Expose } from "class-transformer";
 import { UserStatus } from "src/entities/user.entity";
 
-export class RoleResponseDto {
+// Renamed from RoleResponseDto to avoid conflict with roles module
+export class UserRoleDto {
   @ApiProperty({ example: "uuid" })
   id: string;
 
@@ -42,7 +43,7 @@ export class UserResponseDto {
   @Expose()
   status: UserStatus;
 
-  @ApiProperty({ type: [RoleResponseDto], required: false })
+  @ApiProperty({ type: [UserRoleDto], required: false })
   @Expose()
-  roles?: RoleResponseDto[];
+  roles?: UserRoleDto[];
 }

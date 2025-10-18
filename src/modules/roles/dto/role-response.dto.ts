@@ -1,7 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Type } from "class-transformer";
 
-export class PermissionResponseDto {
+export class RolePermissionDto {
     @ApiProperty({ 
         example: "perm-1", 
         description: "Permission ID" 
@@ -44,12 +44,12 @@ export class RoleResponseDto {
     code: string;
 
     @ApiProperty({ 
-        type: [PermissionResponseDto],
+        type: [RolePermissionDto],
         description: "List of permissions assigned to this role",
     })
     @Expose()
-    @Type(() => PermissionResponseDto)
-    permissions?: PermissionResponseDto[];
+    @Type(() => RolePermissionDto)
+    permissions?: RolePermissionDto[];
 
     @ApiProperty({ 
         example: "2024-01-01T00:00:00.000Z", 
