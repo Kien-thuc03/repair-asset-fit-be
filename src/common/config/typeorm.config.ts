@@ -104,7 +104,7 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         SoftwareProposalItem,
         TechnicianAssignment,
       ],
-      synchronize: false, // dùng để tự dộng đồng bộ database
+      synchronize: true, // dùng để tự dộng đồng bộ database
       logging: false,
       migrations: [__dirname + "/../../migrations/*{.ts,.js}"],
       migrationsTableName: "typeorm_migrations",
