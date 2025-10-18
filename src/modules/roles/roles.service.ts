@@ -8,6 +8,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { In, Repository } from "typeorm";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
+import { BulkCreateRolesDto } from "./dto/bulk-create-roles.dto";
+import { AssignPermissionsToRoleDto, BulkAssignPermissionsDto } from "./dto/assign-permissions.dto";
 import { Role } from "../../entities/role.entity";
 import { Permission } from "../../entities/permission.entity";
 import { RoleResponseDto } from "./dto/role-response.dto";
@@ -258,6 +260,131 @@ export class RolesService {
                     name: permission.name,
                     code: permission.code,
                 })) ?? [],
+            createdAt: role.createdAt,
+            updatedAt: role.updatedAt,
         };
+    }
+
+    /**
+     * createMany
+     * @description Tạo nhiều roles cùng lúc (bulk create)
+     * @param bulkDto BulkCreateRolesDto
+     * @returns RoleResponseDto[]
+     */
+    async createMany(bulkDto: BulkCreateRolesDto): Promise<RoleResponseDto[]> {
+        const results: RoleResponseDto[] = [];
+        const errors: string[] = [];
+
+        for (const roleDto of bulkDto.roles) {
+            try {
+                // Kiểm tra code đã tồn tại chưa
+                const existingRole = await this.roleRepository.findOne({
+                    where: { code: roleDto.code || CommonUtils.generateCode(roleDto.name, ROLE_CODE_PREFIX) },
+                });
+
+                if (existingRole) {
+                    errors.push(`Role with code '${roleDto.code || roleDto.name}' already exists - skipping`);
+                    continue;
+                }
+
+                const role = this.roleRepository.create({
+                    name: roleDto.name,
+                    code: roleDto.code || CommonUtils.generateCode(roleDto.name, ROLE_CODE_PREFIX),
+                });
+
+                // Assign permissions if provided
+                if (roleDto.permissionIds && roleDto.permissionIds.length > 0) {
+                    const permissions = await this.permissionRepository.findByIds(
+                        roleDto.permissionIds
+                    );
+
+                    if (permissions.length !== roleDto.permissionIds.length) {
+                        errors.push(`Some permissions not found for role '${roleDto.name}' - creating without them`);
+                    }
+
+                    role.permissions = permissions;
+                }
+
+                const savedRole = await this.roleRepository.save(role);
+                const result = await this.findOne(savedRole.id);
+                results.push(result);
+            } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                errors.push(`Failed to create role '${roleDto.name}': ${errorMsg}`);
+            }
+        }
+
+        if (errors.length > 0) {
+            console.warn('Bulk create roles completed with errors:', errors);
+        }
+
+        return results;
+    }
+
+    /**
+     * assignPermissions
+     * @description Gán permissions cho một role
+     * @param assignDto AssignPermissionsToRoleDto
+     * @returns RoleResponseDto
+     */
+    async assignPermissions(assignDto: AssignPermissionsToRoleDto): Promise<RoleResponseDto> {
+        const role = await this.roleRepository.findOne({
+            where: { id: assignDto.roleId },
+            relations: ["permissions"],
+        });
+
+        if (!role) {
+            throw new NotFoundException(
+                errorResponse(NOT_FOUND, `Role with ID ${assignDto.roleId} not found`)
+            );
+        }
+
+        // Lấy tất cả permissions được chỉ định
+        const permissions = await this.permissionRepository.findByIds(
+            assignDto.permissionIds
+        );
+
+        if (permissions.length !== assignDto.permissionIds.length) {
+            const foundIds = permissions.map((p) => p.id);
+            const notFoundIds = assignDto.permissionIds.filter(
+                (id) => !foundIds.includes(id)
+            );
+            throw new NotFoundException(
+                errorResponse(NOT_FOUND, `Permissions ${notFoundIds.join(", ")} not found`)
+            );
+        }
+
+        // Assign permissions (replace existing)
+        role.permissions = permissions;
+        await this.roleRepository.save(role);
+
+        return this.findOne(role.id);
+    }
+
+    /**
+     * bulkAssignPermissions
+     * @description Gán permissions cho nhiều roles cùng lúc
+     * @param bulkDto BulkAssignPermissionsDto
+     * @returns RoleResponseDto[]
+     */
+    async bulkAssignPermissions(bulkDto: BulkAssignPermissionsDto): Promise<RoleResponseDto[]> {
+        const results: RoleResponseDto[] = [];
+        const errors: string[] = [];
+
+        for (const assignment of bulkDto.assignments) {
+            try {
+                const result = await this.assignPermissions(assignment);
+                results.push(result);
+            } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                errors.push(`Failed to assign permissions to role '${assignment.roleId}': ${errorMsg}`);
+            }
+        }
+
+        if (errors.length > 0) {
+            console.warn('Bulk assign permissions completed with errors:', errors);
+        }
+
+        return results;
     }
 }

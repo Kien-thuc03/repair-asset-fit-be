@@ -1,28 +1,31 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, MaxLength, Matches } from 'class-validator';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { IsString, IsOptional, MaxLength, Matches } from 'class-validator';
+import { CreatePermissionDto } from './create-permission.dto';
 
-export class CreatePermissionDto {
+export class UpdatePermissionDto extends PartialType(CreatePermissionDto) {
   @ApiProperty({
-    example: 'Báo cáo sự cố',
+    example: 'Báo cáo sự cố máy tính',
     description: 'Tên quyền (Permission name)',
     maxLength: 255,
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Name is required' })
   @MaxLength(255, { message: 'Name must not exceed 255 characters' })
-  name: string;
+  name?: string;
 
   @ApiProperty({
-    example: 'report_issues',
+    example: 'report_computer_issues',
     description: 'Mã quyền (Permission code) - unique, snake_case',
     maxLength: 100,
     pattern: '^[a-z_]+$',
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Code is required' })
   @MaxLength(100, { message: 'Code must not exceed 100 characters' })
   @Matches(/^[a-z_]+$/, {
     message: 'Code must be lowercase letters and underscores only (snake_case)',
   })
-  code: string;
+  code?: string;
 }
