@@ -1,0 +1,111 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+  Matches,
+  IsEnum,
+  IsDateString,
+  IsArray,
+} from 'class-validator';
+import { UserStatus } from 'src/entities/user.entity';
+
+export class CreateUserDto {
+  @ApiProperty({
+    description: 'Tên đăng nhập của người dùng',
+    example: 'john_doe',
+    minLength: 3,
+    maxLength: 50,
+  })
+  @IsString({ message: 'Tên đăng nhập phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Tên đăng nhập không được để trống' })
+  @MinLength(3, { message: 'Tên đăng nhập phải có ít nhất 3 ký tự' })
+  @MaxLength(50, { message: 'Tên đăng nhập không được vượt quá 50 ký tự' })
+  @Matches(/^[a-zA-Z0-9_]+$/, {
+    message: 'Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới',
+  })
+  username: string;
+
+  @ApiProperty({
+    description: 'Mật khẩu của người dùng',
+    example: 'Password@123',
+    minLength: 8,
+  })
+  @IsString({ message: 'Mật khẩu phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+  @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+    message:
+      'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt',
+  })
+  password: string;
+
+  @ApiProperty({
+    description: 'Họ và tên đầy đủ của người dùng',
+    example: 'Nguyễn Văn A',
+    maxLength: 100,
+  })
+  @IsString({ message: 'Họ tên phải là chuỗi ký tự' })
+  @IsNotEmpty({ message: 'Họ tên không được để trống' })
+  @MaxLength(100, { message: 'Họ tên không được vượt quá 100 ký tự' })
+  fullName: string;
+
+  @ApiProperty({
+    description: 'Email của người dùng',
+    example: 'john.doe@example.com',
+  })
+  @IsEmail({}, { message: 'Email không hợp lệ' })
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  @MaxLength(100, { message: 'Email không được vượt quá 100 ký tự' })
+  email: string;
+
+  @ApiPropertyOptional({
+    description: 'ID của đơn vị công tác',
+    example: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'ID đơn vị phải là UUID hợp lệ' })
+  unitId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Số điện thoại của người dùng',
+    example: '+84901234567',
+  })
+  @IsOptional()
+  @IsString({ message: 'Số điện thoại phải là chuỗi ký tự' })
+  @Matches(/^(\+84|0)[0-9]{9,10}$/, {
+    message: 'Số điện thoại không hợp lệ (định dạng Việt Nam)',
+  })
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ngày sinh của người dùng',
+    example: '1990-01-01',
+  })
+  @IsOptional()
+  @IsDateString({}, { message: 'Ngày sinh phải theo định dạng YYYY-MM-DD' })
+  birthDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái của người dùng',
+    enum: UserStatus,
+    default: UserStatus.ACTIVE,
+  })
+  @IsOptional()
+  @IsEnum(UserStatus, { message: 'Trạng thái không hợp lệ' })
+  status?: UserStatus;
+
+  @ApiPropertyOptional({
+    description: 'Danh sách ID các vai trò của người dùng',
+    type: [String],
+    example: ['uuid-role-1', 'uuid-role-2'],
+  })
+  @IsOptional()
+  @IsArray({ message: 'Danh sách vai trò phải là mảng' })
+  @IsUUID('4', { each: true, message: 'Mỗi ID vai trò phải là UUID hợp lệ' })
+  roleIds?: string[];
+}
