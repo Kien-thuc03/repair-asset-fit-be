@@ -253,6 +253,32 @@ remove(@Param('id') id: string, @Query() deleteUserDto: DeleteUserDto)
 - [ ] Add audit logs for user changes
 - [ ] Add bulk operations
 
+## Security & Authentication
+
+### Authentication
+- ✅ **JWT Authentication** được áp dụng cho toàn bộ controller
+- ✅ **JwtAuthGuard** yêu cầu Bearer token trong header
+- ✅ **ApiBearerAuth** decorator cho Swagger UI
+
+### Authorization
+- ✅ **Permission-based** authorization với PermissionsGuard
+- ✅ Permissions riêng cho từng endpoint:
+  - `users:read` - Xem danh sách và chi tiết users
+  - `users:create` - Tạo user mới
+  - `users:update` - Cập nhật user
+  - `users:delete` - Xóa user
+
+### Security Responses
+- ✅ **401 Unauthorized** - Token không hợp lệ hoặc chưa đăng nhập
+- ✅ **403 Forbidden** - Không có quyền truy cập
+
+### Guards Applied
+```typescript
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
+export class UsersController { }
+```
+
 ## Checklist
 
 - [x] DTOs created với validation
@@ -270,6 +296,9 @@ remove(@Param('id') id: string, @Query() deleteUserDto: DeleteUserDto)
 - [x] No TypeScript errors
 - [x] Follows NestJS best practices
 - [x] Follows project architecture
+- [x] **JWT Authentication implemented**
+- [x] **Permission-based Authorization implemented**
+- [x] **Security documentation written**
 
 ## Summary
 

@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   UsePipes,
   ValidationPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,6 +20,7 @@ import {
   ApiParam,
   ApiBody,
   ApiQuery,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import {
@@ -28,17 +30,23 @@ import {
   QueryUserDto,
   UserResponseDto,
 } from './dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 
 @ApiTags('Users')
 @Controller('users')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
+  @Permissions('users:read')
   @ApiOperation({
     summary: 'Lấy danh sách người dùng',
-    description: 'Lấy danh sách tất cả người dùng với phân trang và bộ lọc',
+    description: 'Lấy danh sách tất cả người dùng với phân trang và bộ lọc. Yêu cầu quyền: users:read',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -48,6 +56,14 @@ export class UsersController {
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'Tham số truy vấn không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Không có quyền truy cập',
   })
   async findAll(@Query() query: QueryUserDto): Promise<{
     data: UserResponseDto[];
@@ -60,9 +76,10 @@ export class UsersController {
   }
 
   @Get(':id')
+  @Permissions('users:read')
   @ApiOperation({
     summary: 'Lấy thông tin người dùng theo ID',
-    description: 'Lấy thông tin chi tiết của một người dùng dựa trên ID',
+    description: 'Lấy thông tin chi tiết của một người dùng dựa trên ID. Yêu cầu quyền: users:read',
   })
   @ApiParam({
     name: 'id',
@@ -82,6 +99,14 @@ export class UsersController {
     status: HttpStatus.BAD_REQUEST,
     description: 'ID không hợp lệ',
   })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Không có quyền truy cập',
+  })
   async findOne(
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<UserResponseDto> {
@@ -89,10 +114,11 @@ export class UsersController {
   }
 
   @Post()
+  @Permissions('users:create')
   @ApiOperation({
     summary: 'Tạo người dùng mới',
     description:
-      'Tạo một người dùng mới với thông tin được cung cấp. Mật khẩu sẽ được hash tự động.',
+      'Tạo một người dùng mới với thông tin được cung cấp. Mật khẩu sẽ được hash tự động. Yêu cầu quyền: users:create',
   })
   @ApiBody({
     type: CreateUserDto,
@@ -111,15 +137,24 @@ export class UsersController {
     status: HttpStatus.CONFLICT,
     description: 'Tên đăng nhập hoặc email đã tồn tại',
   })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Không có quyền tạo người dùng',
+  })
   async create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
     return this.usersService.create(createUserDto);
   }
 
   @Put(':id')
+  @Permissions('users:update')
   @ApiOperation({
     summary: 'Cập nhật thông tin người dùng',
     description:
-      'Cập nhật thông tin của người dùng. Chỉ cần cung cấp các trường cần cập nhật.',
+      'Cập nhật thông tin của người dùng. Chỉ cần cung cấp các trường cần cập nhật. Yêu cầu quyền: users:update',
   })
   @ApiParam({
     name: 'id',
@@ -147,6 +182,14 @@ export class UsersController {
     status: HttpStatus.CONFLICT,
     description: 'Tên đăng nhập hoặc email đã tồn tại',
   })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Không có quyền cập nhật người dùng',
+  })
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() updateUserDto: UpdateUserDto,
@@ -155,10 +198,11 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Permissions('users:delete')
   @ApiOperation({
     summary: 'Xóa người dùng',
     description:
-      'Xóa người dùng khỏi hệ thống. Hỗ trợ cả soft delete (mặc định) và hard delete.',
+      'Xóa người dùng khỏi hệ thống. Hỗ trợ cả soft delete (mặc định) và hard delete. Yêu cầu quyền: users:delete',
   })
   @ApiParam({
     name: 'id',
@@ -189,6 +233,14 @@ export class UsersController {
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'ID không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Không có quyền xóa người dùng',
   })
   async remove(
     @Param('id', new ParseUUIDPipe()) id: string,
