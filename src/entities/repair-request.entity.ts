@@ -11,8 +11,8 @@ import {
 } from 'typeorm';
 import { Asset } from './asset.entity';
 import { User } from './user.entity';
-import { ErrorType } from './error-type.entity';
 import { RepairStatus } from '../common/shared/RepairStatus';
+import { ErrorType } from '../common/shared/ErrorType';
 import { RepairLog } from './repair-log.entity';
 import { ComputerComponent } from './computer-component.entity';
 import { ReplacementProposal } from './replacement-proposal.entity';
@@ -34,8 +34,13 @@ export class RepairRequest {
     @Column({ nullable: true, comment: 'KTV được phân công xử lý' })
     assignedTechnicianId?: string;
 
-    @Column({ nullable: true, comment: 'Phân loại lỗi theo danh mục có sẵn' })
-    errorTypeId?: string;
+    @Column({
+        type: 'enum',
+        enum: ErrorType,
+        nullable: true,
+        comment: 'Phân loại lỗi theo danh mục có sẵn'
+    })
+    errorType?: ErrorType;
 
     @Column({ type: 'text', comment: 'Mô tả chi tiết tình trạng lỗi' })
     description: string;
@@ -74,10 +79,6 @@ export class RepairRequest {
     @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'assignedTechnicianId' })
     assignedTechnician?: User;
-
-    @ManyToOne(() => ErrorType, (errorType) => errorType.repairRequests, { nullable: true })
-    @JoinColumn({ name: 'errorTypeId' })
-    errorType?: ErrorType;
 
     @OneToMany(() => RepairLog, (log) => log.repairRequest)
     logs?: RepairLog[];

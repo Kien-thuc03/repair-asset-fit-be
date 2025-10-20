@@ -30,7 +30,6 @@ import { Computer } from "src/entities/computer.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
 import { Software } from "src/entities/software.entity";
 import { AssetSoftware } from "src/entities/asset-software.entity";
-import { ErrorType } from "src/entities/error-type.entity";
 import { RepairRequest } from "src/entities/repair-request.entity";
 import { RepairLog } from "src/entities/repair-log.entity";
 import { ReplacementProposal } from "src/entities/replacement-proposal.entity";
@@ -92,7 +91,6 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         // Repair entities
         Computer,
         ComputerComponent,
-        ErrorType,
         RepairRequest,
         RepairLog,
         ReplacementProposal,
@@ -104,7 +102,7 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         SoftwareProposalItem,
         TechnicianAssignment,
       ],
-      synchronize: true, // dùng để tự dộng đồng bộ database
+      synchronize: false, // dùng để tự dộng đồng bộ database
       logging: false,
       migrations: [__dirname + "/../../migrations/*{.ts,.js}"],
       migrationsTableName: "typeorm_migrations",
@@ -157,7 +155,6 @@ const dataSource = new DataSource({
     // Repair entities
     Computer,
     ComputerComponent,
-    ErrorType,
     RepairRequest,
     RepairLog,
     ReplacementProposal,
