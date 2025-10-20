@@ -43,10 +43,10 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Permissions('users:read')
+  @Permissions('PERM_VIEW_USER')
   @ApiOperation({
     summary: 'Lấy danh sách người dùng',
-    description: 'Lấy danh sách tất cả người dùng với phân trang và bộ lọc. Yêu cầu quyền: users:read',
+    description: 'Lấy danh sách tất cả người dùng với phân trang và bộ lọc. Yêu cầu quyền: PERM_VIEW_USER',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -76,10 +76,10 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Permissions('users:read')
+  @Permissions('PERM_VIEW_USER')
   @ApiOperation({
     summary: 'Lấy thông tin người dùng theo ID',
-    description: 'Lấy thông tin chi tiết của một người dùng dựa trên ID. Yêu cầu quyền: users:read',
+    description: 'Lấy thông tin chi tiết của một người dùng dựa trên ID. Yêu cầu quyền: PERM_VIEW_USER',
   })
   @ApiParam({
     name: 'id',
@@ -114,11 +114,11 @@ export class UsersController {
   }
 
   @Post()
-  @Permissions('users:create')
+  @Permissions('PERM_CREATE_USER')
   @ApiOperation({
     summary: 'Tạo người dùng mới',
     description:
-      'Tạo một người dùng mới với thông tin được cung cấp. Mật khẩu sẽ được hash tự động. Yêu cầu quyền: users:create',
+      'Tạo một người dùng mới với thông tin được cung cấp. Mật khẩu sẽ được hash tự động. Yêu cầu quyền: PERM_CREATE_USER',
   })
   @ApiBody({
     type: CreateUserDto,
@@ -150,11 +150,11 @@ export class UsersController {
   }
 
   @Put(':id')
-  @Permissions('users:update')
+  @Permissions('PERM_UPDATE_USER')
   @ApiOperation({
     summary: 'Cập nhật thông tin người dùng',
     description:
-      'Cập nhật thông tin của người dùng. Chỉ cần cung cấp các trường cần cập nhật. Yêu cầu quyền: users:update',
+      'Cập nhật thông tin của người dùng. Chỉ cần cung cấp các trường cần cập nhật. Yêu cầu quyền: PERM_UPDATE_USER',
   })
   @ApiParam({
     name: 'id',
@@ -198,11 +198,11 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Permissions('users:delete')
+  @Permissions('PERM_REMOVE_USER')
   @ApiOperation({
     summary: 'Xóa người dùng',
     description:
-      'Xóa người dùng khỏi hệ thống. Hỗ trợ cả soft delete (mặc định) và hard delete. Yêu cầu quyền: users:delete',
+      'Xóa người dùng khỏi hệ thống. Hỗ trợ cả soft delete (mặc định) và hard delete. Yêu cầu quyền: PERM_REMOVE_USER',
   })
   @ApiParam({
     name: 'id',
