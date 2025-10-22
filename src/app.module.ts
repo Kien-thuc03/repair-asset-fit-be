@@ -14,7 +14,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RepairsModule } from './modules/repairs/repairs.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { ComputerModule } from './modules/computer/computer.module';
-
+import { TechnicianAssignmentModule } from './modules/technician-assignment/technician-assignment.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -49,8 +49,8 @@ import { ComputerModule } from './modules/computer/computer.module';
     RepairsModule,
     AssetsModule,
     ComputerModule,
+    TechnicianAssignmentModule,
   ],
-  controllers: [],
   providers: [
     {
       provide: APP_GUARD,
