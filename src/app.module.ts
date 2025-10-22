@@ -2,7 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule } from "@nestjs/typeorm";
 import { TypeOrmAsyncConfig } from "./common/config/typeorm.config";
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -15,6 +15,8 @@ import { RepairsModule } from './modules/repairs/repairs.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { ComputerModule } from './modules/computer/computer.module';
 import { TechnicianAssignmentModule } from './modules/technician-assignment/technician-assignment.module';
+import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
+import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -50,6 +52,8 @@ import { TechnicianAssignmentModule } from './modules/technician-assignment/tech
     AssetsModule,
     ComputerModule,
     TechnicianAssignmentModule,
+    AssetSoftwareModule,
+    SoftwareProposalsModule,
   ],
   providers: [
     {
