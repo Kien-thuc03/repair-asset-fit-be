@@ -15,26 +15,6 @@ export class ComputerService {
     private readonly componentRepository: Repository<ComputerComponent>,
   ) {}
 
-  create(createComputerDto: CreateComputerDto) {
-    return 'This action adds a new computer';
-  }
-
-  findAll() {
-    return `This action returns all computer`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} computer`;
-  }
-
-  update(id: number, updateComputerDto: UpdateComputerDto) {
-    return `This action updates a #${id} computer`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} computer`;
-  }
-
   /**
    * Lấy danh sách tất cả máy tính trong một phòng cụ thể
    * Bao gồm thông tin asset, room và các components của máy tính

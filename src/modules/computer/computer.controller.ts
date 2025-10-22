@@ -7,16 +7,6 @@ import { UpdateComputerDto } from './dto/update-computer.dto';
 export class ComputerController {
   constructor(private readonly computerService: ComputerService) {}
 
-  @Post()
-  create(@Body() createComputerDto: CreateComputerDto) {
-    return this.computerService.create(createComputerDto);
-  }
-
-  @Get()
-  findAll() {
-    return this.computerService.findAll();
-  }
-
   /**
    * GET /computer/room/:roomId
    * Lấy tất cả máy tính trong một phòng cụ thể
@@ -28,20 +18,5 @@ export class ComputerController {
   @HttpCode(HttpStatus.OK)
   getComputersByRoom(@Param('roomId') roomId: string) {
     return this.computerService.getComputersByRoom(roomId);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.computerService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateComputerDto: UpdateComputerDto) {
-    return this.computerService.update(+id, updateComputerDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.computerService.remove(+id);
   }
 }
