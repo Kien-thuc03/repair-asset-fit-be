@@ -19,7 +19,7 @@ export class CreateAssetSoftwareDto {
     
     📋 **Dữ liệu mẫu có sẵn:** "Máy vi tính Vostro 270MT"`,
     example: "48b11d82-dee9-4003-b34d-d6063cbb230a",
-    format: "uuid"
+    format: "uuid",
   })
   @IsNotEmpty({ message: "ID tài sản không được để trống" })
   @IsUUID("all", { message: "ID tài sản phải là UUID hợp lệ" })
@@ -38,7 +38,7 @@ export class CreateAssetSoftwareDto {
     - Visual Studio Code 
     - AutoCAD 2024`,
     example: "d52a67b3-155f-4d30-8134-94de8fecf657",
-    format: "uuid"
+    format: "uuid",
   })
   @IsNotEmpty({ message: "ID phần mềm không được để trống" })
   @IsUUID("all", { message: "ID phần mềm phải là UUID hợp lệ" })
@@ -54,7 +54,7 @@ export class CreateAssetSoftwareDto {
     
     💡 **Gợi ý:** Để trống nếu đang cài đặt ngay bây giờ`,
     example: "2024-01-15",
-    format: "date"
+    format: "date",
   })
   @IsOptional()
   @IsDateString(
@@ -76,8 +76,9 @@ export class CreateAssetSoftwareDto {
     - "License key: ABC123-DEF456-GHI789"
     - "Cài đặt bản Enterprise với SQL Server"
     - "Cấu hình cho phòng thí nghiệm, license giáo dục"`,
-    example: "License key: ABCD-EFGH-IJKL-MNOP. Cài đặt với quyền admin cho phòng Lab.",
-    maxLength: 1000
+    example:
+      "License key: ABCD-EFGH-IJKL-MNOP. Cài đặt với quyền admin cho phòng Lab.",
+    maxLength: 1000,
   })
   @IsOptional()
   @IsString({ message: "Ghi chú phải là chuỗi" })

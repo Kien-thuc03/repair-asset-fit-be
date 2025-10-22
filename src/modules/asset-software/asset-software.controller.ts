@@ -85,39 +85,42 @@ export class AssetSoftwareController {
       - Dữ liệu trả về: Chi tiết về việc cài đặt bao gồm thông tin tài sản, phần mềm, ngày cài đặt
     `,
   })
-  @ApiBody({ 
+  @ApiBody({
     type: CreateAssetSoftwareDto,
     description: "Dữ liệu cài đặt phần mềm lên tài sản",
     examples: {
-      'office-install': {
-        summary: '📊 Cài đặt Microsoft Office 2021',
-        description: 'Ví dụ cài đặt Microsoft Office với license key và ghi chú chi tiết',
+      "office-install": {
+        summary: "📊 Cài đặt Microsoft Office 2021",
+        description:
+          "Ví dụ cài đặt Microsoft Office với license key và ghi chú chi tiết",
         value: {
           assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
           softwareId: "d52a67b3-155f-4d30-8134-94de8fecf657",
           installationDate: "2024-01-15",
-          notes: "License key: OFFICE-2021-PRO-PLUS. Cài đặt bản Professional Plus cho phòng Lab 1."
-        }
+          notes:
+            "License key: OFFICE-2021-PRO-PLUS. Cài đặt bản Professional Plus cho phòng Lab 1.",
+        },
       },
-      'autocad-install': {
-        summary: '🎨 Cài đặt AutoCAD 2024',
-        description: 'Ví dụ cài đặt AutoCAD với license giáo dục',
+      "autocad-install": {
+        summary: "🎨 Cài đặt AutoCAD 2024",
+        description: "Ví dụ cài đặt AutoCAD với license giáo dục",
         value: {
           assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
           softwareId: "9252568d-6bfd-47fb-969d-64bad9f1d193",
           installationDate: "2024-01-20",
-          notes: "License giáo dục - Sử dụng cho môn Thiết kế kỹ thuật. Cấu hình cho sinh viên."
-        }
+          notes:
+            "License giáo dục - Sử dụng cho môn Thiết kế kỹ thuật. Cấu hình cho sinh viên.",
+        },
       },
-      'vscode-simple': {
-        summary: '💻 Cài đặt Visual Studio Code (đơn giản)',
-        description: 'Ví dụ cài đặt đơn giản chỉ với thông tin bắt buộc',
+      "vscode-simple": {
+        summary: "💻 Cài đặt Visual Studio Code (đơn giản)",
+        description: "Ví dụ cài đặt đơn giản chỉ với thông tin bắt buộc",
         value: {
           assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
-          softwareId: "1aa594ca-83f6-4b07-bad1-a6f88d5ece3f"
-        }
-      }
-    }
+          softwareId: "1aa594ca-83f6-4b07-bad1-a6f88d5ece3f",
+        },
+      },
+    },
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -135,54 +138,57 @@ export class AssetSoftwareController {
           fixedCode: "FC-001",
           name: "Máy vi tính Vostro 270MT",
           type: "FIXED_ASSET",
-          status: "IN_USE"
+          status: "IN_USE",
         },
         software: {
           id: "d52a67b3-155f-4d30-8134-94de8fecf657",
           name: "Microsoft Office 2021",
           version: "2021",
-          publisher: "Microsoft"
+          publisher: "Microsoft",
         },
         room: {
           id: "room-123",
           name: "Phòng Lab 1",
           building: "Tòa A",
           floor: "Tầng 2",
-          roomNumber: "A201"
-        }
-      }
-    }
+          roomNumber: "A201",
+        },
+      },
+    },
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: "❌ Dữ liệu không hợp lệ hoặc tài sản không phù hợp",
     schema: {
       examples: {
-        'not-computer': {
-          summary: 'Tài sản không phải máy tính',
+        "not-computer": {
+          summary: "Tài sản không phải máy tính",
           value: {
             statusCode: 400,
             message: "Chỉ có thể cài đặt phần mềm lên tài sản máy tính",
-            error: "Bad Request"
-          }
+            error: "Bad Request",
+          },
         },
-        'asset-deleted': {
-          summary: 'Tài sản đã bị xóa',
+        "asset-deleted": {
+          summary: "Tài sản đã bị xóa",
           value: {
             statusCode: 400,
             message: "Tài sản này đã bị xóa, không thể cài đặt phần mềm",
-            error: "Bad Request"
-          }
+            error: "Bad Request",
+          },
         },
-        'validation-error': {
-          summary: 'Lỗi validation dữ liệu',
+        "validation-error": {
+          summary: "Lỗi validation dữ liệu",
           value: {
             statusCode: 400,
-            message: ["ID tài sản không được để trống", "ID phần mềm phải là UUID hợp lệ"],
-            error: "Bad Request"
-          }
-        }
-      }
+            message: [
+              "ID tài sản không được để trống",
+              "ID phần mềm phải là UUID hợp lệ",
+            ],
+            error: "Bad Request",
+          },
+        },
+      },
     },
   })
   @ApiResponse({
@@ -190,23 +196,25 @@ export class AssetSoftwareController {
     description: "🔍 Không tìm thấy tài sản hoặc phần mềm",
     schema: {
       examples: {
-        'asset-not-found': {
-          summary: 'Không tìm thấy tài sản',
+        "asset-not-found": {
+          summary: "Không tìm thấy tài sản",
           value: {
             statusCode: 404,
-            message: "Không tìm thấy tài sản với ID: 48b11d82-dee9-4003-b34d-d6063cbb230a",
-            error: "Not Found"
-          }
+            message:
+              "Không tìm thấy tài sản với ID: 48b11d82-dee9-4003-b34d-d6063cbb230a",
+            error: "Not Found",
+          },
         },
-        'software-not-found': {
-          summary: 'Không tìm thấy phần mềm',
+        "software-not-found": {
+          summary: "Không tìm thấy phần mềm",
           value: {
             statusCode: 404,
-            message: "Không tìm thấy phần mềm với ID: d52a67b3-155f-4d30-8134-94de8fecf657",
-            error: "Not Found"
-          }
-        }
-      }
+            message:
+              "Không tìm thấy phần mềm với ID: d52a67b3-155f-4d30-8134-94de8fecf657",
+            error: "Not Found",
+          },
+        },
+      },
     },
   })
   @ApiResponse({
@@ -215,9 +223,11 @@ export class AssetSoftwareController {
     schema: {
       example: {
         statusCode: 409,
-        message: 'Phần mềm "Microsoft Office 2021" đã được cài đặt trên tài sản này',
+        message:
+          'Phần mềm "Microsoft Office 2021" đã được cài đặt trên tài sản này',
         error: "Conflict",
-        suggestion: "Sử dụng PUT để cập nhật thông tin cài đặt hiện có hoặc DELETE để gỡ trước khi cài lại"
+        suggestion:
+          "Sử dụng PUT để cập nhật thông tin cài đặt hiện có hoặc DELETE để gỡ trước khi cài lại",
       },
     },
   })
