@@ -1,16 +1,46 @@
-import { IsOptional, IsUUID, IsString, IsEnum } from "class-validator";
+import {
+  IsOptional,
+  IsUUID,
+  IsString,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+} from "class-validator";
+import { Type } from "class-transformer";
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { BaseFilterDto } from "src/common/dto/base-filter.dto";
-import { PaginationDto } from "src/common/dto/pagination.dto";
-import { Transform } from "class-transformer";
 
-export class AssetSoftwareFilterDto extends PaginationDto {
+export class AssetSoftwareFilterDto {
+  @ApiPropertyOptional({
+    description: "Số trang (bắt đầu từ 1)",
+    example: 1,
+    minimum: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: "Số trang phải là số nguyên" })
+  @Min(1, { message: "Số trang phải lớn hơn hoặc bằng 1" })
+  page?: number;
+
+  @ApiPropertyOptional({
+    description: "Số lượng item trên mỗi trang",
+    example: 10,
+    minimum: 1,
+    maximum: 100,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: "Limit phải là số nguyên" })
+  @Min(1, { message: "Limit phải lớn hơn hoặc bằng 1" })
+  @Max(100, { message: "Limit không được vượt quá 100" })
+  limit?: number;
+
   @ApiPropertyOptional({
     description: "Lọc theo ID của tài sản",
     example: "123e4567-e89b-12d3-a456-426614174000",
   })
   @IsOptional()
-  @IsUUID(4)
+  @IsUUID("all", { message: "Asset ID phải là UUID hợp lệ" })
   assetId?: string;
 
   @ApiPropertyOptional({
@@ -18,7 +48,7 @@ export class AssetSoftwareFilterDto extends PaginationDto {
     example: "123e4567-e89b-12d3-a456-426614174001",
   })
   @IsOptional()
-  @IsUUID(4)
+  @IsUUID("all", { message: "Software ID phải là UUID hợp lệ" })
   softwareId?: string;
 
   @ApiPropertyOptional({
@@ -26,15 +56,20 @@ export class AssetSoftwareFilterDto extends PaginationDto {
     example: "Microsoft Office",
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: "Từ khóa tìm kiếm phải là chuỗi" })
   search?: string;
 
   @ApiPropertyOptional({
     description: "Sắp xếp theo trường",
     example: "installationDate",
+    enum: ["installationDate", "assetName", "softwareName"],
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: "Trường sắp xếp phải là chuỗi" })
+  @IsEnum(["installationDate", "assetName", "softwareName"], {
+    message:
+      "Trường sắp xếp phải là một trong: installationDate, assetName, softwareName",
+  })
   sortBy?: string;
 
   @ApiPropertyOptional({
@@ -43,6 +78,8 @@ export class AssetSoftwareFilterDto extends PaginationDto {
     example: "DESC",
   })
   @IsOptional()
-  @IsEnum(["ASC", "DESC"])
+  @IsEnum(["ASC", "DESC"], {
+    message: "Thứ tự sắp xếp phải là ASC hoặc DESC",
+  })
   sortOrder?: "ASC" | "DESC";
 }

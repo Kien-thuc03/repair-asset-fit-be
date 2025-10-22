@@ -1,23 +1,24 @@
-import { IsOptional, IsDateString, IsString } from "class-validator";
+import { IsOptional, IsDateString, IsString, MaxLength } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class UpdateAssetSoftwareDto {
   @ApiPropertyOptional({
-    description: "Ngày cài đặt phần mềm",
+    description: "Ngày cài đặt phần mềm (để null nếu muốn xóa ngày cài đặt)",
     example: "2024-01-15",
   })
   @IsOptional()
   @IsDateString(
     {},
-    { message: "Installation date phải là định dạng ngày hợp lệ (YYYY-MM-DD)" }
+    { message: "Ngày cài đặt phải có định dạng hợp lệ (YYYY-MM-DD)" }
   )
-  installationDate?: string;
+  installationDate?: string | null;
 
   @ApiPropertyOptional({
-    description: "Ghi chú về việc cài đặt (ví dụ: key license)",
-    example: "License key: ABCD-EFGH-IJKL-MNOP",
+    description: "Ghi chú về việc cài đặt (key license, cấu hình, v.v.)",
+    example: "License key: ABCD-EFGH-IJKL-MNOP. Đã cập nhật cấu hình.",
   })
   @IsOptional()
-  @IsString()
+  @IsString({ message: "Ghi chú phải là chuỗi" })
+  @MaxLength(1000, { message: "Ghi chú không được vượt quá 1000 ký tự" })
   notes?: string;
 }

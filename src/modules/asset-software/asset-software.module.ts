@@ -10,6 +10,6 @@ import { Software } from "src/entities/software.entity";
   imports: [TypeOrmModule.forFeature([AssetSoftware, Asset, Software])],
   controllers: [AssetSoftwareController],
   providers: [AssetSoftwareService],
-  exports: [AssetSoftwareService],
+  exports: [AssetSoftwareService], // Export nếu modules khác cần dùng
 })
 export class AssetSoftwareModule {}

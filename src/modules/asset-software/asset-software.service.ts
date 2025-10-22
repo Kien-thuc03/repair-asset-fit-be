@@ -6,15 +6,16 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, SelectQueryBuilder } from "typeorm";
+import { plainToInstance } from "class-transformer";
 import { AssetSoftware } from "src/entities/asset-software.entity";
 import { Asset } from "src/entities/asset.entity";
 import { Software } from "src/entities/software.entity";
+import { User } from "src/entities/user.entity";
 import { CreateAssetSoftwareDto } from "./dto/create-asset-software.dto";
 import { UpdateAssetSoftwareDto } from "./dto/update-asset-software.dto";
 import { AssetSoftwareFilterDto } from "./dto/asset-software-filter.dto";
 import { AssetSoftwareResponseDto } from "./dto/asset-software-response.dto";
-import { PaginatedResponseDto } from "src/common/dto/pagination.dto";
-import { ResponseDto } from "./interfaces/response.interface";
+import { AssetShape } from "src/common/shared/AssetShape";
 
 @Injectable()
 export class AssetSoftwareService {
@@ -28,95 +29,159 @@ export class AssetSoftwareService {
   ) {}
 
   /**
-   * Thêm phần mềm vào máy tính
+   * Cài đặt phần mềm lên tài sản
+   * @param createDto - Dữ liệu cài đặt phần mềm
+   * @param currentUser - Người dùng hiện tại (người thực hiện)
+   * @returns AssetSoftwareResponseDto
    */
-  async addSoftwareToAsset(
-    createAssetSoftwareDto: CreateAssetSoftwareDto
-  ): Promise<ResponseDto<AssetSoftwareResponseDto>> {
-    const { assetId, softwareId, installationDate, notes } =
-      createAssetSoftwareDto;
-
-    // Kiểm tra tài sản có tồn tại không
+  async create(
+    createDto: CreateAssetSoftwareDto,
+    currentUser: User
+  ): Promise<AssetSoftwareResponseDto> {
+    // 1. Kiểm tra tài sản có tồn tại không
     const asset = await this.assetRepository.findOne({
-      where: { id: assetId },
-      select: ["id", "name", "ktCode", "fixedCode"],
+      where: { id: createDto.assetId },
+      relations: ["currentRoom", "currentRoom.unit"],
     });
 
     if (!asset) {
-      throw new NotFoundException(`Không tìm thấy tài sản với ID: ${assetId}`);
+      throw new NotFoundException(
+        `Không tìm thấy tài sản với ID: ${createDto.assetId}`
+      );
     }
 
-    // Kiểm tra phần mềm có tồn tại không
+    // 2. Kiểm tra tài sản đã bị xóa chưa
+    if (asset.deletedAt) {
+      throw new BadRequestException(
+        "Tài sản này đã bị xóa, không thể cài đặt phần mềm"
+      );
+    }
+
+    // 3. Kiểm tra tài sản có phải là máy tính không (có thể mở rộng validation)
+    if (asset.shape !== AssetShape.COMPUTER) {
+      throw new BadRequestException(
+        "Chỉ có thể cài đặt phần mềm lên tài sản máy tính"
+      );
+    }
+
+    // 4. Kiểm tra phần mềm có tồn tại không
     const software = await this.softwareRepository.findOne({
-      where: { id: softwareId },
-      select: ["id", "name", "version", "publisher"],
+      where: { id: createDto.softwareId },
     });
 
     if (!software) {
       throw new NotFoundException(
-        `Không tìm thấy phần mềm với ID: ${softwareId}`
+        `Không tìm thấy phần mềm với ID: ${createDto.softwareId}`
       );
     }
 
-    // Kiểm tra phần mềm đã được cài trên tài sản này chưa
+    // 5. Kiểm tra phần mềm đã được cài trên tài sản này chưa
     const existingAssetSoftware = await this.assetSoftwareRepository.findOne({
-      where: { assetId, softwareId },
+      where: { assetId: createDto.assetId, softwareId: createDto.softwareId },
     });
 
     if (existingAssetSoftware) {
       throw new ConflictException(
-        `Phần mềm "${software.name}" đã được cài đặt trên tài sản "${asset.name}"`
+        `Phần mềm "${software.name}" đã được cài đặt trên tài sản này`
       );
     }
 
-    // Tạo mới AssetSoftware
+    // 6. Tạo bản ghi cài đặt mới
     const assetSoftware = this.assetSoftwareRepository.create({
-      assetId,
-      softwareId,
-      installationDate: installationDate
-        ? new Date(installationDate)
-        : undefined,
-      notes,
+      assetId: createDto.assetId,
+      softwareId: createDto.softwareId,
+      installationDate: createDto.installationDate
+        ? new Date(createDto.installationDate)
+        : new Date(), // Mặc định là ngày hiện tại
+      notes: createDto.notes,
     });
 
-    await this.assetSoftwareRepository.save(assetSoftware);
+    // 7. Lưu vào database
+    const savedRecord = await this.assetSoftwareRepository.save(assetSoftware);
 
-    const response: AssetSoftwareResponseDto = {
-      assetId: assetSoftware.assetId,
-      softwareId: assetSoftware.softwareId,
-      installationDate: assetSoftware.installationDate
-        ?.toISOString()
-        .split("T")[0],
-      notes: assetSoftware.notes,
-      asset: {
-        id: asset.id,
-        name: asset.name,
-        ktCode: asset.ktCode,
-        fixedCode: asset.fixedCode,
+    // 8. Lấy thông tin đầy đủ với relations
+    const fullRecord = await this.assetSoftwareRepository.findOne({
+      where: {
+        assetId: savedRecord.assetId,
+        softwareId: savedRecord.softwareId,
       },
-      software: {
-        id: software.id,
-        name: software.name,
-        version: software.version,
-        publisher: software.publisher,
-      },
-    };
+      relations: ["asset", "software"],
+    });
+
+    // 9. Transform và trả về DTO
+    return this.transformToResponseDto(fullRecord);
+  }
+
+  /**
+   * Lấy danh sách phần mềm được cài đặt với lọc và phân trang
+   * @param filter - Bộ lọc và phân trang
+   * @returns Danh sách phần mềm đã phân trang
+   */
+  async findAll(filter: AssetSoftwareFilterDto) {
+    const queryBuilder = this.createQueryBuilder(filter);
+
+    // Đếm tổng số records
+    const total = await queryBuilder.getCount();
+
+    // Phân trang
+    const page = filter.page || 1;
+    const limit = filter.limit || 10;
+    queryBuilder.skip((page - 1) * limit).take(limit);
+
+    // Thực hiện query
+    const data = await queryBuilder.getMany();
+
+    const transformedData = data.map((item) =>
+      this.transformToResponseDto(item)
+    );
 
     return {
-      success: true,
-      message: `Đã thêm phần mềm "${software.name}" vào tài sản "${asset.name}" thành công`,
-      data: response,
+      data: transformedData,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Lấy thông tin chi tiết một phần mềm được cài trên tài sản
+   * @param assetId - ID tài sản
+   * @param softwareId - ID phần mềm
+   * @returns AssetSoftwareResponseDto
+   */
+  async findOne(
+    assetId: string,
+    softwareId: string
+  ): Promise<AssetSoftwareResponseDto> {
+    const assetSoftware = await this.assetSoftwareRepository.findOne({
+      where: { assetId, softwareId },
+      relations: ["asset", "software"],
+    });
+
+    if (!assetSoftware) {
+      throw new NotFoundException(
+        "Không tìm thấy phần mềm được cài đặt trên tài sản"
+      );
+    }
+
+    return this.transformToResponseDto(assetSoftware);
   }
 
   /**
    * Cập nhật thông tin cài đặt phần mềm
+   * @param assetId - ID tài sản
+   * @param softwareId - ID phần mềm
+   * @param updateDto - Dữ liệu cập nhật
+   * @param currentUser - Người dùng hiện tại
+   * @returns AssetSoftwareResponseDto
    */
-  async updateAssetSoftware(
+  async update(
     assetId: string,
     softwareId: string,
-    updateAssetSoftwareDto: UpdateAssetSoftwareDto
-  ): Promise<ResponseDto<AssetSoftwareResponseDto>> {
+    updateDto: UpdateAssetSoftwareDto,
+    currentUser: User
+  ): Promise<AssetSoftwareResponseDto> {
     const assetSoftware = await this.assetSoftwareRepository.findOne({
       where: { assetId, softwareId },
       relations: ["asset", "software"],
@@ -124,58 +189,46 @@ export class AssetSoftwareService {
 
     if (!assetSoftware) {
       throw new NotFoundException(
-        `Không tìm thấy phần mềm được cài đặt trên tài sản với assetId: ${assetId}, softwareId: ${softwareId}`
+        "Không tìm thấy phần mềm được cài đặt trên tài sản"
       );
     }
 
     // Cập nhật thông tin
-    if (updateAssetSoftwareDto.installationDate !== undefined) {
-      assetSoftware.installationDate = updateAssetSoftwareDto.installationDate
-        ? new Date(updateAssetSoftwareDto.installationDate)
-        : undefined;
+    if (updateDto.installationDate !== undefined) {
+      assetSoftware.installationDate = updateDto.installationDate
+        ? new Date(updateDto.installationDate)
+        : null;
     }
 
-    if (updateAssetSoftwareDto.notes !== undefined) {
-      assetSoftware.notes = updateAssetSoftwareDto.notes;
+    if (updateDto.notes !== undefined) {
+      assetSoftware.notes = updateDto.notes;
     }
 
-    await this.assetSoftwareRepository.save(assetSoftware);
+    // Lưu thay đổi
+    const updatedRecord =
+      await this.assetSoftwareRepository.save(assetSoftware);
 
-    const response: AssetSoftwareResponseDto = {
-      assetId: assetSoftware.assetId,
-      softwareId: assetSoftware.softwareId,
-      installationDate: assetSoftware.installationDate
-        ?.toISOString()
-        .split("T")[0],
-      notes: assetSoftware.notes,
-      asset: {
-        id: assetSoftware.asset.id,
-        name: assetSoftware.asset.name,
-        ktCode: assetSoftware.asset.ktCode,
-        fixedCode: assetSoftware.asset.fixedCode,
-      },
-      software: {
-        id: assetSoftware.software.id,
-        name: assetSoftware.software.name,
-        version: assetSoftware.software.version,
-        publisher: assetSoftware.software.publisher,
-      },
-    };
+    // Lấy thông tin đầy đủ với relations
+    const fullRecord = await this.assetSoftwareRepository.findOne({
+      where: { assetId, softwareId },
+      relations: ["asset", "software"],
+    });
 
-    return {
-      success: true,
-      message: "Cập nhật thông tin cài đặt phần mềm thành công",
-      data: response,
-    };
+    return this.transformToResponseDto(fullRecord);
   }
 
   /**
-   * Xóa phần mềm khỏi tài sản
+   * Gỡ phần mềm khỏi tài sản
+   * @param assetId - ID tài sản
+   * @param softwareId - ID phần mềm
+   * @param currentUser - Người dùng hiện tại
+   * @returns Thông báo thành công
    */
-  async removeSoftwareFromAsset(
+  async remove(
     assetId: string,
-    softwareId: string
-  ): Promise<ResponseDto<void>> {
+    softwareId: string,
+    currentUser: User
+  ): Promise<{ message: string }> {
     const assetSoftware = await this.assetSoftwareRepository.findOne({
       where: { assetId, softwareId },
       relations: ["asset", "software"],
@@ -183,124 +236,68 @@ export class AssetSoftwareService {
 
     if (!assetSoftware) {
       throw new NotFoundException(
-        `Không tìm thấy phần mềm được cài đặt trên tài sản với assetId: ${assetId}, softwareId: ${softwareId}`
+        "Không tìm thấy phần mềm được cài đặt trên tài sản"
       );
     }
 
     await this.assetSoftwareRepository.remove(assetSoftware);
 
     return {
-      success: true,
       message: `Đã gỡ phần mềm "${assetSoftware.software.name}" khỏi tài sản "${assetSoftware.asset.name}" thành công`,
     };
   }
 
   /**
-   * Lấy danh sách phần mềm được cài trên tài sản
+   * Transform entity sang DTO response
+   * @param assetSoftware - AssetSoftware entity
+   * @returns AssetSoftwareResponseDto
    */
-  async getAssetSoftwareList(
-    filter: AssetSoftwareFilterDto
-  ): Promise<ResponseDto<PaginatedResponseDto<AssetSoftwareResponseDto>>> {
-    const queryBuilder = this.createQueryBuilder(filter);
-
-    // Đếm tổng số records
-    const totalItems = await queryBuilder.getCount();
-
-    // Phân trang
-    const { page, limit } = filter;
-    if (page && limit) {
-      queryBuilder.skip((page - 1) * limit).take(limit);
-    }
-
-    // Thực hiện query
-    const assetSoftwareList = await queryBuilder.getMany();
-
-    const data = assetSoftwareList.map((item) => ({
-      assetId: item.assetId,
-      softwareId: item.softwareId,
-      installationDate: item.installationDate?.toISOString().split("T")[0],
-      notes: item.notes,
-      asset: {
-        id: item.asset.id,
-        name: item.asset.name,
-        ktCode: item.asset.ktCode,
-        fixedCode: item.asset.fixedCode,
-      },
-      software: {
-        id: item.software.id,
-        name: item.software.name,
-        version: item.software.version,
-        publisher: item.software.publisher,
-      },
-    }));
-
-    const totalPages = limit ? Math.ceil(totalItems / limit) : 1;
-    const currentPage = page || 1;
-
-    const pagination = new PaginatedResponseDto(data, {
-      page: currentPage,
-      limit: limit || totalItems,
-      total: totalItems,
-      totalPages,
-      hasNext: currentPage < totalPages,
-      hasPrev: currentPage > 1,
+  private transformToResponseDto(
+    assetSoftware: AssetSoftware
+  ): AssetSoftwareResponseDto {
+    const dto = plainToInstance(AssetSoftwareResponseDto, assetSoftware, {
+      excludeExtraneousValues: true,
     });
 
-    return {
-      success: true,
-      message: "Lấy danh sách phần mềm được cài đặt thành công",
-      data: pagination,
-    };
-  }
-
-  /**
-   * Lấy thông tin chi tiết một phần mềm được cài trên tài sản
-   */
-  async getAssetSoftwareDetail(
-    assetId: string,
-    softwareId: string
-  ): Promise<ResponseDto<AssetSoftwareResponseDto>> {
-    const assetSoftware = await this.assetSoftwareRepository.findOne({
-      where: { assetId, softwareId },
-      relations: ["asset", "software"],
-    });
-
-    if (!assetSoftware) {
-      throw new NotFoundException(
-        `Không tìm thấy phần mềm được cài đặt trên tài sản với assetId: ${assetId}, softwareId: ${softwareId}`
-      );
-    }
-
-    const response: AssetSoftwareResponseDto = {
-      assetId: assetSoftware.assetId,
-      softwareId: assetSoftware.softwareId,
-      installationDate: assetSoftware.installationDate
-        ?.toISOString()
-        .split("T")[0],
-      notes: assetSoftware.notes,
-      asset: {
+    // Transform nested objects
+    if (assetSoftware.asset) {
+      dto.asset = {
         id: assetSoftware.asset.id,
         name: assetSoftware.asset.name,
         ktCode: assetSoftware.asset.ktCode,
         fixedCode: assetSoftware.asset.fixedCode,
-      },
-      software: {
+        type: assetSoftware.asset.type,
+        status: assetSoftware.asset.status,
+      } as any;
+
+      // Add room info if exists
+      if (assetSoftware.asset.currentRoom) {
+        dto.room = {
+          id: assetSoftware.asset.currentRoom.id,
+          name: assetSoftware.asset.currentRoom.name,
+          building: assetSoftware.asset.currentRoom.building,
+          floor: assetSoftware.asset.currentRoom.floor,
+          roomNumber: assetSoftware.asset.currentRoom.roomNumber,
+        } as any;
+      }
+    }
+
+    if (assetSoftware.software) {
+      dto.software = {
         id: assetSoftware.software.id,
         name: assetSoftware.software.name,
         version: assetSoftware.software.version,
         publisher: assetSoftware.software.publisher,
-      },
-    };
+      } as any;
+    }
 
-    return {
-      success: true,
-      message: "Lấy thông tin chi tiết thành công",
-      data: response,
-    };
+    return dto;
   }
 
   /**
    * Tạo query builder với các điều kiện lọc
+   * @param filter - Bộ lọc
+   * @returns SelectQueryBuilder<AssetSoftware>
    */
   private createQueryBuilder(
     filter: AssetSoftwareFilterDto
@@ -308,7 +305,8 @@ export class AssetSoftwareService {
     const queryBuilder = this.assetSoftwareRepository
       .createQueryBuilder("assetSoftware")
       .leftJoinAndSelect("assetSoftware.asset", "asset")
-      .leftJoinAndSelect("assetSoftware.software", "software");
+      .leftJoinAndSelect("assetSoftware.software", "software")
+      .leftJoinAndSelect("asset.currentRoom", "room");
 
     // Lọc theo assetId
     if (filter.assetId) {
@@ -332,9 +330,13 @@ export class AssetSoftwareService {
       );
     }
 
+    // Lọc tài sản chưa bị xóa
+    queryBuilder.andWhere("asset.deletedAt IS NULL");
+    queryBuilder.andWhere("software.deletedAt IS NULL");
+
     // Sắp xếp
     const sortBy = filter.sortBy || "installationDate";
-    const sortOrder = filter.sortOrder || "DESC";
+    const sortOrder = (filter.sortOrder || "DESC") as "ASC" | "DESC";
 
     if (sortBy === "assetName") {
       queryBuilder.orderBy("asset.name", sortOrder);
