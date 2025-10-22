@@ -13,6 +13,7 @@ import { RolesModule } from "./modules/roles/roles.module";
 import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { RepairsModule } from "./modules/repairs/repairs.module";
 import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
+import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AssetSoftwareModule } from "./modules/asset-software/asset-software.mod
     PermissionsModule,
     RepairsModule,
     AssetSoftwareModule,
+    SoftwareProposalsModule,
   ],
   controllers: [],
   providers: [
