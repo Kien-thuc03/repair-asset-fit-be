@@ -4,21 +4,21 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
-import { plainToInstance } from 'class-transformer';
-import { RepairRequest } from 'src/entities/repair-request.entity';
-import { Asset } from 'src/entities/asset.entity';
-import { User } from 'src/entities/user.entity';
-import { CreateRepairRequestDto } from './dto/create-repair-request.dto';
-import { UpdateRepairRequestDto } from './dto/update-repair-request.dto';
-import { RepairRequestFilterDto } from './dto/repair-request-filter.dto';
-import { AssignTechnicianDto } from './dto/assign-technician.dto';
-import { RepairRequestResponseDto } from './dto/repair-request-response.dto';
-import { RepairStatus } from 'src/common/shared/RepairStatus';
-import { AssetStatus } from 'src/common/shared/AssetStatus';
-import { ErrorType } from 'src/common/shared/ErrorType';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, SelectQueryBuilder } from "typeorm";
+import { plainToInstance } from "class-transformer";
+import { RepairRequest } from "src/entities/repair-request.entity";
+import { Asset } from "src/entities/asset.entity";
+import { User } from "src/entities/user.entity";
+import { CreateRepairRequestDto } from "./dto/create-repair-request.dto";
+import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
+import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
+import { AssignTechnicianDto } from "./dto/assign-technician.dto";
+import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
+import { RepairStatus } from "src/common/shared/RepairStatus";
+import { AssetStatus } from "src/common/shared/AssetStatus";
+import { ErrorType } from "src/common/shared/ErrorType";
 
 @Injectable()
 export class RepairsService {
@@ -28,7 +28,7 @@ export class RepairsService {
     @InjectRepository(Asset)
     private readonly assetRepository: Repository<Asset>,
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly userRepository: Repository<User>
   ) {}
 
   /**
@@ -39,23 +39,25 @@ export class RepairsService {
    */
   async create(
     createDto: CreateRepairRequestDto,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     // 1. Kiểm tra tài sản có tồn tại không
     const asset = await this.assetRepository.findOne({
       where: { id: createDto.computerAssetId },
-      relations: ['currentRoom', 'currentRoom.unit'],
+      relations: ["currentRoom", "currentRoom.unit"],
     });
 
     if (!asset) {
       throw new NotFoundException(
-        `Không tìm thấy tài sản với ID: ${createDto.computerAssetId}`,
+        `Không tìm thấy tài sản với ID: ${createDto.computerAssetId}`
       );
     }
 
     // 2. Kiểm tra tài sản đã bị xóa chưa
     if (asset.deletedAt) {
-      throw new BadRequestException('Tài sản này đã bị xóa, không thể tạo yêu cầu sửa chữa');
+      throw new BadRequestException(
+        "Tài sản này đã bị xóa, không thể tạo yêu cầu sửa chữa"
+      );
     }
 
     // 3. Kiểm tra tài sản có đang được sửa chữa không
@@ -68,14 +70,17 @@ export class RepairsService {
 
     if (existingRepair) {
       throw new ConflictException(
-        `Tài sản này đang có yêu cầu sửa chữa đang xử lý (${existingRepair.requestCode})`,
+        `Tài sản này đang có yêu cầu sửa chữa đang xử lý (${existingRepair.requestCode})`
       );
     }
 
     // 4. Validate ErrorType nếu có (enum validation)
-    if (createDto.errorType && !Object.values(ErrorType).includes(createDto.errorType)) {
+    if (
+      createDto.errorType &&
+      !Object.values(ErrorType).includes(createDto.errorType)
+    ) {
       throw new BadRequestException(
-        `Loại lỗi không hợp lệ. Các giá trị cho phép: ${Object.values(ErrorType).join(', ')}`,
+        `Loại lỗi không hợp lệ. Các giá trị cho phép: ${Object.values(ErrorType).join(", ")}`
       );
     }
 
@@ -104,10 +109,10 @@ export class RepairsService {
     const fullRequest = await this.repairRequestRepository.findOne({
       where: { id: savedRequest.id },
       relations: [
-        'computerAsset',
-        'computerAsset.currentRoom',
-        'reporter',
-        'assignedTechnician',
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
       ],
     });
 
@@ -125,20 +130,20 @@ export class RepairsService {
 
     // Lấy yêu cầu cuối cùng trong năm
     const lastRequest = await this.repairRequestRepository
-      .createQueryBuilder('request')
-      .where('request.requestCode LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('request.requestCode', 'DESC')
+      .createQueryBuilder("request")
+      .where("request.requestCode LIKE :prefix", { prefix: `${prefix}%` })
+      .orderBy("request.requestCode", "DESC")
       .getOne();
 
     let nextNumber = 1;
     if (lastRequest) {
       // Lấy số thứ tự từ mã cuối cùng
-      const lastNumber = parseInt(lastRequest.requestCode.split('-')[2], 10);
+      const lastNumber = parseInt(lastRequest.requestCode.split("-")[2], 10);
       nextNumber = lastNumber + 1;
     }
 
     // Format số thành 4 chữ số (0001, 0002, ...)
-    const formattedNumber = nextNumber.toString().padStart(4, '0');
+    const formattedNumber = nextNumber.toString().padStart(4, "0");
     return `${prefix}${formattedNumber}`;
   }
 
@@ -148,7 +153,7 @@ export class RepairsService {
    * @returns RepairRequestResponseDto
    */
   private transformToResponseDto(
-    request: RepairRequest,
+    request: RepairRequest
   ): RepairRequestResponseDto {
     const dto = plainToInstance(RepairRequestResponseDto, request, {
       excludeExtraneousValues: true,
@@ -225,7 +230,7 @@ export class RepairsService {
     const data = await queryBuilder.getMany();
 
     const transformedData = data.map((item) =>
-      this.transformToResponseDto(item),
+      this.transformToResponseDto(item)
     );
 
     return {
@@ -246,16 +251,16 @@ export class RepairsService {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
       relations: [
-        'computerAsset',
-        'computerAsset.currentRoom',
-        'reporter',
-        'assignedTechnician',
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
       ],
     });
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
@@ -272,23 +277,23 @@ export class RepairsService {
   async update(
     id: string,
     updateDto: UpdateRepairRequestDto,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ['reporter', 'assignedTechnician'],
+      relations: ["reporter", "assignedTechnician"],
     });
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     // Kiểm tra quyền cập nhật
     const canUpdate = this.canUserUpdateRequest(repairRequest, currentUser);
     if (!canUpdate) {
-      throw new ForbiddenException('Bạn không có quyền cập nhật yêu cầu này');
+      throw new ForbiddenException("Bạn không có quyền cập nhật yêu cầu này");
     }
 
     // Validate status transition nếu có
@@ -304,16 +309,17 @@ export class RepairsService {
       this.updateTimestampForStatus(repairRequest, updateDto.status);
     }
 
-    const updatedRequest = await this.repairRequestRepository.save(repairRequest);
+    const updatedRequest =
+      await this.repairRequestRepository.save(repairRequest);
 
     // Lấy thông tin đầy đủ với relations
     const fullRequest = await this.repairRequestRepository.findOne({
       where: { id },
       relations: [
-        'computerAsset',
-        'computerAsset.currentRoom',
-        'reporter',
-        'assignedTechnician',
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
       ],
     });
 
@@ -328,7 +334,7 @@ export class RepairsService {
    */
   async acceptRequest(
     id: string,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
@@ -336,20 +342,20 @@ export class RepairsService {
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     if (repairRequest.status !== RepairStatus.CHỜ_TIẾP_NHẬN) {
       throw new BadRequestException(
-        'Chỉ có thể tiếp nhận yêu cầu ở trạng thái CHỜ_TIẾP_NHẬN',
+        "Chỉ có thể tiếp nhận yêu cầu ở trạng thái CHỜ_TIẾP_NHẬN"
       );
     }
 
     // Kiểm tra quyền tiếp nhận (kỹ thuật viên hoặc admin)
     if (!this.canUserAcceptRequest(currentUser)) {
       throw new ForbiddenException(
-        'Bạn không có quyền tiếp nhận yêu cầu sửa chữa',
+        "Bạn không có quyền tiếp nhận yêu cầu sửa chữa"
       );
     }
 
@@ -371,7 +377,7 @@ export class RepairsService {
   async assignTechnician(
     id: string,
     assignDto: AssignTechnicianDto,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
@@ -379,20 +385,20 @@ export class RepairsService {
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     if (repairRequest.status !== RepairStatus.ĐÃ_TIẾP_NHẬN) {
       throw new BadRequestException(
-        'Chỉ có thể phân công kỹ thuật viên khi yêu cầu đã được tiếp nhận',
+        "Chỉ có thể phân công kỹ thuật viên khi yêu cầu đã được tiếp nhận"
       );
     }
 
     // Kiểm tra quyền phân công (admin hoặc trưởng nhóm)
     if (!this.canUserAssignTechnician(currentUser)) {
       throw new ForbiddenException(
-        'Bạn không có quyền phân công kỹ thuật viên',
+        "Bạn không có quyền phân công kỹ thuật viên"
       );
     }
 
@@ -403,14 +409,14 @@ export class RepairsService {
 
     if (!technician) {
       throw new NotFoundException(
-        `Không tìm thấy kỹ thuật viên với ID: ${assignDto.technicianId}`,
+        `Không tìm thấy kỹ thuật viên với ID: ${assignDto.technicianId}`
       );
     }
 
     // Kiểm tra kỹ thuật viên có role phù hợp không
     if (!this.isUserTechnician(technician)) {
       throw new BadRequestException(
-        'Người dùng được chọn không phải là kỹ thuật viên',
+        "Người dùng được chọn không phải là kỹ thuật viên"
       );
     }
 
@@ -432,7 +438,7 @@ export class RepairsService {
    */
   async startProcessing(
     id: string,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
@@ -440,13 +446,13 @@ export class RepairsService {
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     if (repairRequest.status !== RepairStatus.ĐÃ_TIẾP_NHẬN) {
       throw new BadRequestException(
-        'Chỉ có thể bắt đầu xử lý yêu cầu đã được tiếp nhận',
+        "Chỉ có thể bắt đầu xử lý yêu cầu đã được tiếp nhận"
       );
     }
 
@@ -456,7 +462,7 @@ export class RepairsService {
       !this.isAdmin(currentUser)
     ) {
       throw new ForbiddenException(
-        'Chỉ kỹ thuật viên được phân công mới có thể bắt đầu xử lý',
+        "Chỉ kỹ thuật viên được phân công mới có thể bắt đầu xử lý"
       );
     }
 
@@ -476,26 +482,26 @@ export class RepairsService {
   async completeRequest(
     id: string,
     resolutionNotes: string,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ['computerAsset'],
+      relations: ["computerAsset"],
     });
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     if (
       ![RepairStatus.ĐANG_XỬ_LÝ, RepairStatus.CHỜ_THAY_THẾ].includes(
-        repairRequest.status,
+        repairRequest.status
       )
     ) {
       throw new BadRequestException(
-        'Chỉ có thể hoàn thành yêu cầu đang được xử lý hoặc chờ thay thế',
+        "Chỉ có thể hoàn thành yêu cầu đang được xử lý hoặc chờ thay thế"
       );
     }
 
@@ -505,7 +511,7 @@ export class RepairsService {
       !this.isAdmin(currentUser)
     ) {
       throw new ForbiddenException(
-        'Chỉ kỹ thuật viên được phân công hoặc admin mới có thể hoàn thành',
+        "Chỉ kỹ thuật viên được phân công hoặc admin mới có thể hoàn thành"
       );
     }
 
@@ -534,42 +540,41 @@ export class RepairsService {
   async cancelRequest(
     id: string,
     cancelReason: string,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ['reporter', 'computerAsset'],
+      relations: ["reporter", "computerAsset"],
     });
 
     if (!repairRequest) {
       throw new NotFoundException(
-        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`,
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
       );
     }
 
     if (repairRequest.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
-      throw new BadRequestException(
-        'Không thể hủy yêu cầu đã hoàn thành',
-      );
+      throw new BadRequestException("Không thể hủy yêu cầu đã hoàn thành");
     }
 
     // Kiểm tra quyền hủy
     const canCancel =
-      repairRequest.reporterId === currentUser.id && 
-      repairRequest.status === RepairStatus.CHỜ_TIẾP_NHẬN ||
+      (repairRequest.reporterId === currentUser.id &&
+        repairRequest.status === RepairStatus.CHỜ_TIẾP_NHẬN) ||
       this.isAdmin(currentUser);
 
     if (!canCancel) {
-      throw new ForbiddenException(
-        'Bạn không có quyền hủy yêu cầu này',
-      );
+      throw new ForbiddenException("Bạn không có quyền hủy yêu cầu này");
     }
 
     repairRequest.status = RepairStatus.ĐÃ_HỦY;
     repairRequest.resolutionNotes = `ĐÃ HỦY: ${cancelReason}`;
 
     // Khôi phục trạng thái tài sản nếu cần
-    if (repairRequest.computerAsset && repairRequest.computerAsset.status === AssetStatus.DAMAGED) {
+    if (
+      repairRequest.computerAsset &&
+      repairRequest.computerAsset.status === AssetStatus.DAMAGED
+    ) {
       repairRequest.computerAsset.status = AssetStatus.IN_USE;
       await this.assetRepository.save(repairRequest.computerAsset);
     }
@@ -585,25 +590,25 @@ export class RepairsService {
    * @returns SelectQueryBuilder<RepairRequest>
    */
   private createQueryBuilder(
-    filter: RepairRequestFilterDto,
+    filter: RepairRequestFilterDto
   ): SelectQueryBuilder<RepairRequest> {
     const queryBuilder = this.repairRequestRepository
-      .createQueryBuilder('request')
-      .leftJoinAndSelect('request.computerAsset', 'asset')
-      .leftJoinAndSelect('request.reporter', 'reporter')
-      .leftJoinAndSelect('request.assignedTechnician', 'technician')
-      .leftJoinAndSelect('asset.currentRoom', 'room');
+      .createQueryBuilder("request")
+      .leftJoinAndSelect("request.computerAsset", "asset")
+      .leftJoinAndSelect("request.reporter", "reporter")
+      .leftJoinAndSelect("request.assignedTechnician", "technician")
+      .leftJoinAndSelect("asset.currentRoom", "room");
 
     // Lọc theo computerAssetId
     if (filter.computerAssetId) {
-      queryBuilder.andWhere('request.computerAssetId = :computerAssetId', {
+      queryBuilder.andWhere("request.computerAssetId = :computerAssetId", {
         computerAssetId: filter.computerAssetId,
       });
     }
 
     // Lọc theo reporterId
     if (filter.reporterId) {
-      queryBuilder.andWhere('request.reporterId = :reporterId', {
+      queryBuilder.andWhere("request.reporterId = :reporterId", {
         reporterId: filter.reporterId,
       });
     }
@@ -611,23 +616,23 @@ export class RepairsService {
     // Lọc theo assignedTechnicianId
     if (filter.assignedTechnicianId) {
       queryBuilder.andWhere(
-        'request.assignedTechnicianId = :assignedTechnicianId',
+        "request.assignedTechnicianId = :assignedTechnicianId",
         {
           assignedTechnicianId: filter.assignedTechnicianId,
-        },
+        }
       );
     }
 
     // Lọc theo status
     if (filter.status) {
-      queryBuilder.andWhere('request.status = :status', {
+      queryBuilder.andWhere("request.status = :status", {
         status: filter.status,
       });
     }
 
     // Lọc theo errorType
     if (filter.errorType) {
-      queryBuilder.andWhere('request.errorType = :errorType', {
+      queryBuilder.andWhere("request.errorType = :errorType", {
         errorType: filter.errorType,
       });
     }
@@ -635,27 +640,27 @@ export class RepairsService {
     // Tìm kiếm theo requestCode hoặc description
     if (filter.search) {
       queryBuilder.andWhere(
-        '(request.requestCode ILIKE :search OR request.description ILIKE :search)',
-        { search: `%${filter.search}%` },
+        "(request.requestCode ILIKE :search OR request.description ILIKE :search)",
+        { search: `%${filter.search}%` }
       );
     }
 
     // Lọc theo khoảng thời gian
     if (filter.fromDate) {
-      queryBuilder.andWhere('request.createdAt >= :fromDate', {
+      queryBuilder.andWhere("request.createdAt >= :fromDate", {
         fromDate: new Date(filter.fromDate),
       });
     }
 
     if (filter.toDate) {
-      queryBuilder.andWhere('request.createdAt <= :toDate', {
+      queryBuilder.andWhere("request.createdAt <= :toDate", {
         toDate: new Date(filter.toDate),
       });
     }
 
     // Sắp xếp
-    const sortBy = filter.sortBy || 'createdAt';
-    const sortOrder = (filter.sortOrder || 'DESC') as 'ASC' | 'DESC';
+    const sortBy = filter.sortBy || "createdAt";
+    const sortOrder = (filter.sortOrder || "DESC") as "ASC" | "DESC";
 
     queryBuilder.orderBy(`request.${sortBy}`, sortOrder);
 
@@ -712,7 +717,7 @@ export class RepairsService {
    */
   private validateStatusTransition(
     fromStatus: RepairStatus,
-    toStatus: RepairStatus,
+    toStatus: RepairStatus
   ): void {
     const validTransitions: Record<RepairStatus, RepairStatus[]> = {
       [RepairStatus.CHỜ_TIẾP_NHẬN]: [
@@ -738,7 +743,7 @@ export class RepairsService {
 
     if (!validTransitions[fromStatus]?.includes(toStatus)) {
       throw new BadRequestException(
-        `Không thể chuyển từ trạng thái ${fromStatus} sang ${toStatus}`,
+        `Không thể chuyển từ trạng thái ${fromStatus} sang ${toStatus}`
       );
     }
   }
@@ -750,7 +755,7 @@ export class RepairsService {
    */
   private updateTimestampForStatus(
     request: RepairRequest,
-    status: RepairStatus,
+    status: RepairStatus
   ): void {
     switch (status) {
       case RepairStatus.ĐÃ_TIẾP_NHẬN:
@@ -769,7 +774,7 @@ export class RepairsService {
    */
   private isAdmin(user: User): boolean {
     // TODO: Implement admin role check
-    return user.roles?.some((role) => role.name === 'ADMIN') || false;
+    return user.roles?.some((role) => role.name === "ADMIN") || false;
   }
 
   /**
@@ -781,7 +786,7 @@ export class RepairsService {
     // TODO: Implement technician role check
     return (
       user.roles?.some((role) =>
-        ['TECHNICIAN', 'LEAD_TECHNICIAN'].includes(role.name),
+        ["TECHNICIAN", "LEAD_TECHNICIAN"].includes(role.name)
       ) || false
     );
   }
