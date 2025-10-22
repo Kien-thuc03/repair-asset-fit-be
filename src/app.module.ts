@@ -12,6 +12,8 @@ import { RoomsModule } from './modules/rooms/rooms.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RepairsModule } from './modules/repairs/repairs.module';
+import { AssetsModule } from './modules/assets/assets.module';
+import { ComputerModule } from './modules/computer/computer.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { RepairsModule } from './modules/repairs/repairs.module';
     RolesModule,
     PermissionsModule,
     RepairsModule,
+    AssetsModule,
+    ComputerModule,
   ],
   controllers: [],
   providers: [

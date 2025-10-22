@@ -1,0 +1,47 @@
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus } from '@nestjs/common';
+import { ComputerService } from './computer.service';
+import { CreateComputerDto } from './dto/create-computer.dto';
+import { UpdateComputerDto } from './dto/update-computer.dto';
+
+@Controller('computer')
+export class ComputerController {
+  constructor(private readonly computerService: ComputerService) {}
+
+  @Post()
+  create(@Body() createComputerDto: CreateComputerDto) {
+    return this.computerService.create(createComputerDto);
+  }
+
+  @Get()
+  findAll() {
+    return this.computerService.findAll();
+  }
+
+  /**
+   * GET /computer/room/:roomId
+   * Lấy tất cả máy tính trong một phòng cụ thể
+   * 
+   * @param roomId - UUID của phòng
+   * @returns Danh sách máy tính kèm thông tin asset, room và components
+   */
+  @Get('room/:roomId')
+  @HttpCode(HttpStatus.OK)
+  getComputersByRoom(@Param('roomId') roomId: string) {
+    return this.computerService.getComputersByRoom(roomId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.computerService.findOne(+id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateComputerDto: UpdateComputerDto) {
+    return this.computerService.update(+id, updateComputerDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.computerService.remove(+id);
+  }
+}
