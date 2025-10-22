@@ -295,7 +295,7 @@ npm run test:e2e -- software-proposals
 
 1. Khởi động server: `npm run start:dev`
 2. Truy cập: `http://localhost:3000/api/docs`
-3. Tìm section "Software Proposals - Đề xuất phần mềm"
+3. Tìm section "Software Proposals"
 4. Test từng endpoint với dữ liệu mẫu
 
 ## Performance Considerations
