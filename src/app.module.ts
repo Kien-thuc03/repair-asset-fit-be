@@ -2,16 +2,18 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule } from "@nestjs/typeorm";
 import { TypeOrmAsyncConfig } from "./common/config/typeorm.config";
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
-import { RedisModule } from './modules/redis/redis.module';
-import { UnitsModule } from './modules/units/units.module';
-import { RoomsModule } from './modules/rooms/rooms.module';
-import { RolesModule } from './modules/roles/roles.module';
-import { PermissionsModule } from './modules/permissions/permissions.module';
-import { RepairsModule } from './modules/repairs/repairs.module';
+import { AuthModule } from "./modules/auth/auth.module";
+import { UsersModule } from "./modules/users/users.module";
+import { RedisModule } from "./modules/redis/redis.module";
+import { UnitsModule } from "./modules/units/units.module";
+import { RoomsModule } from "./modules/rooms/rooms.module";
+import { RolesModule } from "./modules/roles/roles.module";
+import { PermissionsModule } from "./modules/permissions/permissions.module";
+import { RepairsModule } from "./modules/repairs/repairs.module";
+import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
+import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { RepairsModule } from './modules/repairs/repairs.module';
     RolesModule,
     PermissionsModule,
     RepairsModule,
+    AssetSoftwareModule,
+    SoftwareProposalsModule,
   ],
   controllers: [],
   providers: [
