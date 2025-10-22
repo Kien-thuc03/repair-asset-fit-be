@@ -6,11 +6,12 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder } from "typeorm";
+import { Repository, SelectQueryBuilder, In } from "typeorm";
 import { plainToInstance } from "class-transformer";
 import { RepairRequest } from "src/entities/repair-request.entity";
 import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
+import { ComputerComponent } from "src/entities/computer-component.entity";
 import { CreateRepairRequestDto } from "./dto/create-repair-request.dto";
 import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
@@ -28,7 +29,9 @@ export class RepairsService {
     @InjectRepository(Asset)
     private readonly assetRepository: Repository<Asset>,
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(ComputerComponent)
+    private readonly computerComponentRepository: Repository<ComputerComponent>
   ) {}
 
   /**
@@ -84,28 +87,53 @@ export class RepairsService {
       );
     }
 
-    // 5. Sinh mã yêu cầu tự động (YCSC-YYYY-NNNN)
+    // 5. Kiểm tra các component IDs nếu có
+    let components: ComputerComponent[] = [];
+    if (createDto.componentIds && createDto.componentIds.length > 0) {
+      components = await this.computerComponentRepository.find({
+        where: { id: In(createDto.componentIds) },
+      });
+
+      if (components.length !== createDto.componentIds.length) {
+        const foundIds = components.map((c) => c.id);
+        const notFoundIds = createDto.componentIds.filter(
+          (id) => !foundIds.includes(id)
+        );
+        throw new BadRequestException(
+          `Không tìm thấy các component với ID: ${notFoundIds.join(", ")}`
+        );
+      }
+    }
+
+    // 6. Sinh mã yêu cầu tự động (YCSC-YYYY-NNNN)
     const requestCode = await this.generateRequestCode();
 
-    // 6. Tạo repair request mới
+    // 7. Tạo repair request mới (loại bỏ componentIds khỏi createDto)
+    const { componentIds, ...requestData } = createDto;
     const repairRequest = this.repairRequestRepository.create({
-      ...createDto,
+      ...requestData,
       requestCode,
       reporterId: currentUser.id,
       status: RepairStatus.CHỜ_TIẾP_NHẬN,
       createdAt: new Date(),
     });
 
-    // 7. Lưu vào database
+    // 8. Lưu vào database
     const savedRequest = await this.repairRequestRepository.save(repairRequest);
 
-    // 8. Cập nhật trạng thái tài sản nếu cần
+    // 9. Liên kết với components nếu có
+    if (components.length > 0) {
+      savedRequest.components = components;
+      await this.repairRequestRepository.save(savedRequest);
+    }
+
+    // 10. Cập nhật trạng thái tài sản nếu cần
     if (asset.status === AssetStatus.IN_USE) {
       asset.status = AssetStatus.DAMAGED;
       await this.assetRepository.save(asset);
     }
 
-    // 9. Lấy thông tin đầy đủ với relations
+    // 11. Lấy thông tin đầy đủ với relations
     const fullRequest = await this.repairRequestRepository.findOne({
       where: { id: savedRequest.id },
       relations: [
@@ -113,10 +141,11 @@ export class RepairsService {
         "computerAsset.currentRoom",
         "reporter",
         "assignedTechnician",
+        "components",
       ],
     });
 
-    // 10. Transform và trả về DTO
+    // 12. Transform và trả về DTO
     return this.transformToResponseDto(fullRequest);
   }
 
@@ -207,6 +236,16 @@ export class RepairsService {
       } as any;
     }
 
+    if (request.components && request.components.length > 0) {
+      dto.components = request.components.map((component) => ({
+        id: component.id,
+        name: component.name,
+        type: component.componentType,
+        specifications: component.componentSpecs || "",
+        status: component.status,
+      })) as any;
+    }
+
     return dto;
   }
 
@@ -255,6 +294,7 @@ export class RepairsService {
         "computerAsset.currentRoom",
         "reporter",
         "assignedTechnician",
+        "components",
       ],
     });
 
@@ -320,6 +360,7 @@ export class RepairsService {
         "computerAsset.currentRoom",
         "reporter",
         "assignedTechnician",
+        "components",
       ],
     });
 
@@ -597,7 +638,8 @@ export class RepairsService {
       .leftJoinAndSelect("request.computerAsset", "asset")
       .leftJoinAndSelect("request.reporter", "reporter")
       .leftJoinAndSelect("request.assignedTechnician", "technician")
-      .leftJoinAndSelect("asset.currentRoom", "room");
+      .leftJoinAndSelect("asset.currentRoom", "room")
+      .leftJoinAndSelect("request.components", "components");
 
     // Lọc theo computerAssetId
     if (filter.computerAssetId) {
