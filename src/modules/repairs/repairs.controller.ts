@@ -409,4 +409,95 @@ export class RepairsController {
   ): Promise<RepairRequestResponseDto> {
     return this.repairsService.update(id, updateDto, user);
   }
+
+  
+  @Get("rooms/:roomId/technicians")
+  @ApiOperation({
+    summary: "Lấy danh sách kỹ thuật viên phụ trách một phòng",
+    description: `
+      Lấy danh sách các kỹ thuật viên được phân công phụ trách một phòng cụ thể.
+      
+      **Logic phân công:**
+      - Tìm KTV được phân công cho tầng cụ thể (building + floor)
+      - Hoặc KTV quản lý cả tòa nhà (building + floor = null)
+      
+      **Sử dụng khi:**
+      - Hiển thị danh sách KTV có thể xử lý yêu cầu từ phòng đó
+      - Tự động gợi ý KTV khi tạo yêu cầu sửa chữa
+      - Kiểm tra coverage phân công KTV theo phòng
+    `,
+  })
+  @ApiParam({
+    name: "roomId",
+    description: "ID của phòng cần lấy danh sách KTV",
+    format: "uuid",
+    example: "a8c7f3e2-9b4d-4e1a-8f3c-2d5e6f7a8b9c",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách kỹ thuật viên thành công",
+    schema: {
+      example: [
+        {
+          id: "47d9013d-6c7e-48d2-8443-6300632ed811",
+          username: "21011111",
+          fullName: "Nguyễn Văn A",
+          email: "nguyenvana@fit.hcmuaf.edu.vn",
+          roles: [
+            {
+              id: "role-123",
+              name: "TECHNICIAN",
+            },
+          ],
+        },
+        {
+          id: "b8d7e6f5-c4a3-4b2a-9e8d-7c6b5a4f3e2d",
+          username: "21011112",
+          fullName: "Trần Thị B",
+          email: "tranthib@fit.hcmuaf.edu.vn",
+          roles: [
+            {
+              id: "role-124",
+              name: "LEAD_TECHNICIAN",
+            },
+          ],
+        },
+      ],
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy phòng hoặc không có KTV phụ trách",
+    schema: {
+      examples: {
+        "room-not-found": {
+          summary: "Không tìm thấy phòng",
+          value: {
+            statusCode: 404,
+            message:
+              "Không tìm thấy phòng với ID: a8c7f3e2-9b4d-4e1a-8f3c-2d5e6f7a8b9c",
+            error: "Not Found",
+          },
+        },
+        "no-technicians": {
+          summary: "Không có KTV phụ trách",
+          value: {
+            statusCode: 404,
+            message:
+              "Không tìm thấy kỹ thuật viên được phân công cho phòng này (Tòa A - Tầng 3)",
+            error: "Not Found",
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getTechniciansForRoom(
+    @Param("roomId", ParseUUIDPipe) roomId: string
+  ): Promise<User[]> {
+    return this.repairsService.getTechniciansForRoom(roomId);
+  }
 }
