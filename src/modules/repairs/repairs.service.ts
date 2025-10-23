@@ -118,6 +118,52 @@ export class RepairsService {
           `Không tìm thấy các component với ID: ${notFoundIds.join(", ")}`
         );
       }
+
+      // 5.2. Kiểm tra các component có đang trong repair request chưa hoàn thành không
+      const componentsInActiveRepairs = await this.repairRequestRepository
+        .createQueryBuilder('rr')
+        .innerJoin('repair_request_components', 'rrc', 'rr.id = rrc.repairRequestId')
+        .where('rrc.componentId IN (:...componentIds)', { componentIds: createDto.componentIds })
+        .andWhere('rr.status NOT IN (:...completedStatuses)', {
+          completedStatuses: [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.ĐÃ_HỦY],
+        })
+        .select([
+          'rr.id',
+          'rr.requestCode',
+          'rr.status',
+          'rrc.componentId as componentId'
+        ])
+        .getRawMany();
+
+      if (componentsInActiveRepairs.length > 0) {
+        // Group components by repair request để hiển thị thông tin rõ ràng
+        const requestMap = new Map<string, { code: string; status: string; components: string[] }>();
+        
+        for (const item of componentsInActiveRepairs) {
+          const key = item.rr_id;
+          if (!requestMap.has(key)) {
+            requestMap.set(key, {
+              code: item.rr_requestCode,
+              status: item.rr_status,
+              components: []
+            });
+          }
+          
+          const component = components.find(c => c.id === item.componentId);
+          if (component) {
+            requestMap.get(key)!.components.push(component.name);
+          }
+        }
+
+        // Tạo error message chi tiết
+        const errorDetails = Array.from(requestMap.values())
+          .map(req => `${req.code} (${req.status}): ${req.components.join(', ')}`)
+          .join('\n  - ');
+
+        throw new ConflictException(
+          `Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - ${errorDetails}\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.`
+        );
+      }
     }
 
     // 5.1. Kiểm tra các software IDs nếu có (chỉ khi errorType là MAY_HU_PHAN_MEM)
