@@ -373,7 +373,12 @@ export class RepairsService {
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ["reporter", "assignedTechnician", "computerAsset", "computerAsset.currentRoom"],
+      relations: [
+        "reporter",
+        "assignedTechnician",
+        "computerAsset",
+        "computerAsset.currentRoom",
+      ],
     });
 
     if (!repairRequest) {
@@ -383,7 +388,10 @@ export class RepairsService {
     }
 
     // Kiểm tra quyền cập nhật
-    const canUpdate = await this.canUserUpdateRequest(repairRequest, currentUser);
+    const canUpdate = await this.canUserUpdateRequest(
+      repairRequest,
+      currentUser
+    );
     if (!canUpdate) {
       throw new ForbiddenException("Bạn không có quyền cập nhật yêu cầu này");
     }
@@ -1046,7 +1054,10 @@ export class RepairsService {
    * @param user - User
    * @returns boolean
    */
-  private async canUserUpdateRequest(request: RepairRequest, user: User): Promise<boolean> {
+  private async canUserUpdateRequest(
+    request: RepairRequest,
+    user: User
+  ): Promise<boolean> {
     // Admin có thể sửa bất kỳ lúc nào
     if (this.isAdmin(user)) {
       return true;

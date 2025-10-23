@@ -409,5 +409,4 @@ export class RepairsController {
   ): Promise<RepairRequestResponseDto> {
     return this.repairsService.update(id, updateDto, user);
   }
-
 }
