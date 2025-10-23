@@ -22,6 +22,7 @@ import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
 import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
+import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
 import { RepairStatus } from "src/common/shared/RepairStatus";
 import { AssetStatus } from "src/common/shared/AssetStatus";
 import { ErrorType } from "src/common/shared/ErrorType";
@@ -1263,5 +1264,137 @@ export class RepairsService {
       .getMany();
 
     return assignments.map((a) => a.technician);
+  }
+
+  /**
+   * Ghi nhận và xử lý lỗi trực tiếp tại hiện trường
+   * Endpoint cho kỹ thuật viên để tạo repair request VÀ cập nhật kết quả xử lý trong 1 lần
+   * 
+   * @param createDto - Dữ liệu tạo và xử lý repair request
+   * @param currentUser - Kỹ thuật viên đang xử lý
+   * @returns RepairRequestResponseDto
+   */
+  async createAndProcess(
+    createDto: CreateAndProcessRepairRequestDto,
+    currentUser: User,
+  ): Promise<RepairRequestResponseDto> {
+    // Validate business logic nếu có finalStatus
+    if (createDto.finalStatus) {
+      this.validateCreateAndProcess(createDto);
+    }
+
+    // 1. Tạo repair request sử dụng logic create() hiện tại
+    const repairRequest = await this.create(createDto, currentUser);
+
+    // 2. Nếu có finalStatus và resolutionNotes → Cập nhật kết quả xử lý ngay
+    if (createDto.finalStatus && createDto.resolutionNotes) {
+      // Use transaction để đảm bảo atomic
+      const queryRunner = this.repairRequestRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // 2.1. Update repair request với kết quả xử lý
+        const requestToUpdate = await queryRunner.manager.findOne(RepairRequest, {
+          where: { id: repairRequest.id },
+          relations: ['computerAsset'],
+        });
+
+        if (!requestToUpdate) {
+          throw new NotFoundException('Không tìm thấy repair request vừa tạo');
+        }
+
+        requestToUpdate.status = createDto.finalStatus;
+        requestToUpdate.resolutionNotes = createDto.resolutionNotes;
+
+        // 2.2. Nếu status = ĐÃ_HOÀN_THÀNH → Set completedAt và update asset status
+        if (createDto.finalStatus === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+          requestToUpdate.completedAt = new Date();
+
+          // Update asset status từ DAMAGED → IN_USE
+          const asset = requestToUpdate.computerAsset;
+          if (asset && asset.status === AssetStatus.DAMAGED) {
+            asset.status = AssetStatus.IN_USE;
+            await queryRunner.manager.save(asset);
+          }
+        }
+
+        // 2.3. Save repair request
+        await queryRunner.manager.save(requestToUpdate);
+
+        await queryRunner.commitTransaction();
+
+        console.log(
+          `✅ Đã xử lý repair request ${repairRequest.requestCode} với status: ${createDto.finalStatus}`
+        );
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        console.error('Lỗi khi cập nhật kết quả xử lý:', error);
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    }
+
+    // 3. Return full data với relations
+    return this.findOne(repairRequest.id);
+  }
+
+  /**
+   * Validate business logic cho createAndProcess
+   * @param dto - CreateAndProcessRepairRequestDto
+   * @throws BadRequestException nếu dữ liệu không hợp lệ
+   */
+  private validateCreateAndProcess(
+    dto: CreateAndProcessRepairRequestDto,
+  ): void {
+    // 1. Validate: Nếu có finalStatus thì bắt buộc phải có resolutionNotes
+    if (dto.finalStatus && !dto.resolutionNotes) {
+      throw new BadRequestException(
+        'Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng'
+      );
+    }
+
+    // 2. Validate: CHỜ_THAY_THẾ chỉ áp dụng cho lỗi phần cứng
+    if (dto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
+      if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
+        throw new BadRequestException(
+          'Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). ' +
+          'Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.'
+        );
+      }
+
+      // Bắt buộc phải có componentIds khi CHỜ_THAY_THẾ
+      if (!dto.componentIds || dto.componentIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ'
+        );
+      }
+    }
+
+    // 3. Validate: Lỗi phần mềm phải có softwareIds
+    if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
+      if (!dto.softwareIds || dto.softwareIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM'
+        );
+      }
+
+      // Lỗi phần mềm chỉ có thể có status ĐÃ_HOÀN_THÀNH
+      if (dto.finalStatus && dto.finalStatus !== RepairStatus.ĐÃ_HOÀN_THÀNH) {
+        throw new BadRequestException(
+          'Lỗi phần mềm (MAY_HU_PHAN_MEM) chỉ có thể có trạng thái cuối cùng là ĐÃ_HOÀN_THÀNH'
+        );
+      }
+    }
+
+    // 4. Validate: Lỗi phần cứng phải có componentIds
+    if (dto.errorType && dto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
+      if (!dto.componentIds || dto.componentIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi xử lý lỗi phần cứng'
+        );
+      }
+    }
   }
 }

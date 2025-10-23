@@ -26,6 +26,7 @@ import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
 import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
+import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "src/entities/user.entity";
@@ -106,6 +107,124 @@ export class RepairsController {
     @CurrentUser() user: User
   ): Promise<RepairRequestResponseDto> {
     return this.repairsService.create(createRepairRequestDto, user);
+  }
+
+  @Post('process-onsite')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Ghi nhận và xử lý lỗi trực tiếp tại hiện trường',
+    description: `
+      Endpoint dành cho kỹ thuật viên để ghi nhận lỗi VÀ xử lý ngay tại chỗ trong một lần submit.
+      
+      **Workflow:**
+      1. Ghi nhận thông tin lỗi (asset, description, errorType, components/software)
+      2. Thực hiện xử lý trực tiếp tại hiện trường
+      3. Ghi nhận kết quả xử lý (resolutionNotes)
+      4. Hệ thống tự động cập nhật status phù hợp dựa trên finalStatus
+      
+      **Các kết quả xử lý:**
+      
+      **A. Lỗi phần mềm (errorType = MAY_HU_PHAN_MEM):**
+      - Bắt buộc có \`softwareIds\` (danh sách phần mềm bị lỗi)
+      - finalStatus chỉ có thể là \`ĐÃ_HOÀN_THÀNH\`
+      - Ví dụ: Cài đặt lại Windows, update driver, kill virus, cài lại Office
+      
+      **B. Lỗi phần cứng (errorType khác MAY_HU_PHAN_MEM):**
+      - Bắt buộc có \`componentIds\` (danh sách linh kiện bị lỗi)
+      
+      B.1. **Sửa chữa thành công tại chỗ:**
+      - finalStatus = \`ĐÃ_HOÀN_THÀNH\`
+      - Ví dụ: Thay cáp VGA, làm sạch tiếp xúc RAM, vặn chặt ốc
+      - Asset status tự động chuyển từ DAMAGED → IN_USE
+      
+      B.2. **Cần thay thế linh kiện:**
+      - finalStatus = \`CHỜ_THAY_THẾ\`
+      - Ví dụ: Nguồn cháy, RAM hỏng, ổ cứng bad sector
+      - Bắt buộc có \`componentIds\` (linh kiện cần thay thế)
+      - Asset status vẫn DAMAGED (đợi thay thế xong mới chuyển)
+      
+      **C. Chỉ ghi nhận lỗi (không xử lý ngay):**
+      - Không cung cấp \`finalStatus\` và \`resolutionNotes\`
+      - Repair request được tạo với status mặc định \`CHỜ_TIẾP_NHẬN\`
+      - Có thể xử lý sau bằng endpoint PATCH /:id
+      
+      **Validation:**
+      - Kiểm tra component/software không đang trong repair request khác chưa hoàn thành
+      - Lỗi phần mềm không thể có finalStatus = CHỜ_THAY_THẾ
+      - CHỜ_THAY_THẾ bắt buộc phải có componentIds
+      - Có finalStatus bắt buộc phải có resolutionNotes
+    `,
+  })
+  @ApiBody({ type: CreateAndProcessRepairRequestDto })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Ghi nhận và xử lý lỗi thành công',
+    type: RepairRequestResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Dữ liệu không hợp lệ hoặc vi phạm business logic',
+    schema: {
+      examples: {
+        missingResolutionNotes: {
+          summary: 'Thiếu ghi chú xử lý',
+          value: {
+            statusCode: 400,
+            message: 'Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng',
+            error: 'Bad Request',
+          },
+        },
+        softwareNoReplacement: {
+          summary: 'Lỗi phần mềm không thể CHỜ_THAY_THẾ',
+          value: {
+            statusCode: 400,
+            message: 'Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.',
+            error: 'Bad Request',
+          },
+        },
+        replacementNoComponents: {
+          summary: 'CHỜ_THAY_THẾ thiếu componentIds',
+          value: {
+            statusCode: 400,
+            message: 'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ',
+            error: 'Bad Request',
+          },
+        },
+        softwareNoSoftwareIds: {
+          summary: 'Lỗi phần mềm thiếu softwareIds',
+          value: {
+            statusCode: 400,
+            message: 'Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM',
+            error: 'Bad Request',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Component đang trong repair request khác chưa hoàn thành',
+    schema: {
+      example: {
+        statusCode: 409,
+        message: 'Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - YCSC-2025-0003 (CHỜ_TIẾP_NHẬN): intel core i3, màn hình\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.',
+        error: 'Conflict',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Không tìm thấy asset, component hoặc software',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+  })
+  async createAndProcessOnsite(
+    @Body() dto: CreateAndProcessRepairRequestDto,
+    @CurrentUser() user: User,
+  ): Promise<RepairRequestResponseDto> {
+    return this.repairsService.createAndProcess(dto, user);
   }
 
   @Get()
