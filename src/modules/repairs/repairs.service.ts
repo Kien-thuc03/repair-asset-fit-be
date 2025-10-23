@@ -497,6 +497,26 @@ export class RepairsService {
   }
 
   /**
+   * Lấy danh sách yêu cầu theo kỹ thuật viên
+   * @param technicianId - ID kỹ thuật viên
+   * @returns Danh sách yêu cầu sửa chữa
+   */
+  async findByTechnician(technicianId: string): Promise<RepairRequestResponseDto[]> {
+    const repairRequests = await this.repairRequestRepository.find({
+      where: { assignedTechnicianId: technicianId },
+      relations: [
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
+        "components",
+      ],
+    });
+
+    return repairRequests.map((request) => this.transformToResponseDto(request));
+  }
+
+  /**
    * Tiếp nhận yêu cầu sửa chữa
    * @param id - ID yêu cầu sửa chữa
    * @param currentUser - Người tiếp nhận
@@ -664,117 +684,6 @@ export class RepairsService {
     };
   }
 
-  /**
-   * Lấy danh sách yêu cầu theo tầng
-   * @param filter - Filter parameters
-   * @param user - User hiện tại
-   * @returns Danh sách yêu cầu
-   */
-  async findByFloor(
-    filter: RepairRequestFilterDto & { building?: string; floor?: string },
-    user: User
-  ) {
-    const isTechnician = this.isUserTechnician(user);
-    const isAdmin = this.isAdmin(user);
-
-    if (!isTechnician && !isAdmin) {
-      throw new ForbiddenException("Bạn không có quyền xem yêu cầu sửa chữa");
-    }
-
-    // Build base query
-    const queryBuilder = this.repairRequestRepository
-      .createQueryBuilder("rr")
-      .leftJoinAndSelect("rr.computerAsset", "asset")
-      .leftJoinAndSelect("asset.currentRoom", "room")
-      .leftJoinAndSelect("room.unit", "unit")
-      .leftJoinAndSelect("rr.reportedByUser", "reporter")
-      .leftJoinAndSelect("rr.assignedTechnician", "technician");
-
-    // Nếu là kỹ thuật viên thường, chỉ xem yêu cầu trong tầng được phân công
-    if (isTechnician && !isAdmin) {
-      const assignments = await this.technicianAssignmentRepository.find({
-        where: { technicianId: user.id },
-      });
-
-      if (assignments.length === 0) {
-        return {
-          items: [],
-          total: 0,
-        };
-      }
-
-      // Build OR conditions for each assignment
-      const conditions = assignments.map((assignment, index) => {
-        const params: any = {};
-        params[`building_${index}`] = assignment.building;
-        params[`floor_${index}`] = assignment.floor;
-
-        return {
-          query: `(room.building = :building_${index} AND room.floor = :floor_${index})`,
-          params,
-        };
-      });
-
-      const whereClause = conditions.map((c) => c.query).join(" OR ");
-      const allParams = conditions.reduce(
-        (acc, c) => ({ ...acc, ...c.params }),
-        {}
-      );
-
-      queryBuilder.andWhere(`(${whereClause})`, allParams);
-    }
-
-    // Apply additional filters
-    if (filter.building) {
-      queryBuilder.andWhere("room.building = :building", {
-        building: filter.building,
-      });
-    }
-
-    if (filter.floor) {
-      queryBuilder.andWhere("room.floor = :floor", { floor: filter.floor });
-    }
-
-    if (filter.status) {
-      queryBuilder.andWhere("rr.status = :status", { status: filter.status });
-    }
-
-    if (filter.errorType) {
-      queryBuilder.andWhere("rr.errorType = :errorType", {
-        errorType: filter.errorType,
-      });
-    }
-
-    if (filter.search) {
-      queryBuilder.andWhere(
-        "(rr.requestCode LIKE :search OR rr.issueDescription LIKE :search)",
-        { search: `%${filter.search}%` }
-      );
-    }
-
-    // Sorting - ưu tiên theo ngày tạo (mới nhất trước)
-    queryBuilder.orderBy("rr.createdAt", "DESC");
-
-    // Pagination
-    const page = filter.page || 1;
-    const limit = filter.limit || 20;
-    const skip = (page - 1) * limit;
-
-    const [items, total] = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
-
-    return {
-      items: items.map((item) =>
-        plainToInstance(RepairRequestResponseDto, item)
-      ),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
 
   /**
    * Kỹ thuật viên tự nhận và bắt đầu xử lý yêu cầu

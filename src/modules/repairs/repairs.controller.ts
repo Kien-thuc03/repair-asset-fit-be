@@ -500,4 +500,24 @@ export class RepairsController {
   ): Promise<User[]> {
     return this.repairsService.getTechniciansForRoom(roomId);
   }
+
+
+  @Get("repair-requests/technicians/:technicianId")
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách yêu cầu sửa chữa của kỹ thuật viên thành công",
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy yêu cầu sửa chữa của kỹ thuật viên",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getRepairRequestsByTechnician(
+    @Param("technicianId", ParseUUIDPipe) technicianId: string
+  ): Promise<RepairRequestResponseDto[]> {
+    return this.repairsService.findByTechnician(technicianId);
+  }
 }
