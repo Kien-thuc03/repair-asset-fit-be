@@ -3,7 +3,6 @@ import {
   Post,
   Get,
   Put,
-  Delete,
   Body,
   Param,
   Query,
@@ -283,12 +282,19 @@ export class SoftwareProposalsController {
     description: `
       Cập nhật thông tin đề xuất phần mềm.
       
-      **Quyền hạn:**
-      - Chỉ người tạo đề xuất hoặc admin mới được cập nhật
-      - Chỉ được cập nhật khi đang ở trạng thái CHỜ_DUYỆT
+      **Quyền hạn theo role:**
+      - **Người tạo đề xuất**: Có thể cập nhật khi CHỜ_DUYỆT (thông tin phòng, lý do)
+      - **Kỹ thuật viên**: Có thể cập nhật trạng thái (duyệt, từ chối, đánh dấu đã trang bị)
+      - **Admin**: Có thể cập nhật bất kỳ lúc nào
+      
+      **Quy trình chuyển trạng thái:**
+      - CHỜ_DUYỆT → ĐÃ_DUYỆT (Kỹ thuật viên duyệt đề xuất)
+      - CHỜ_DUYỆT → ĐÃ_TỪ_CHỐI (Kỹ thuật viên từ chối)
+      - ĐÃ_DUYỆT → ĐÃ_TRANG_BỊ (Kỹ thuật viên đánh dấu đã cài đặt xong)
+      - ĐÃ_TỪ_CHỐI → CHỜ_DUYỆT (Có thể gửi lại đề xuất)
       
       **Lưu ý:**
-      - Khi cập nhật status thành ĐÃ_DUYỆT hoặc ĐÃ_TỪ_CHỐI, approverId sẽ tự động được set
+      - Khi cập nhật status thành ĐÃ_DUYỆT, ĐÃ_TỪ_CHỐI, hoặc ĐÃ_TRANG_BỊ, approverId sẽ tự động được set
       - Không thể cập nhật danh sách items qua endpoint này
     `,
   })
@@ -301,22 +307,33 @@ export class SoftwareProposalsController {
     type: UpdateSoftwareProposalDto,
     examples: {
       "update-room": {
-        summary: "Thay đổi phòng máy",
+        summary: "Người tạo: Thay đổi phòng máy",
+        description:
+          "Người tạo đề xuất có thể thay đổi thông tin khi CHỜ_DUYỆT",
         value: {
           roomId: "new-room-id",
           reason: "Lý do đã được cập nhật",
         },
       },
       approve: {
-        summary: "Duyệt đề xuất",
+        summary: "Kỹ thuật viên: Duyệt đề xuất",
+        description: "Kỹ thuật viên duyệt đề xuất phần mềm",
         value: {
           status: "ĐÃ_DUYỆT",
         },
       },
       reject: {
-        summary: "Từ chối đề xuất",
+        summary: "Kỹ thuật viên: Từ chối đề xuất",
+        description: "Kỹ thuật viên từ chối đề xuất với lý do",
         value: {
           status: "ĐÃ_TỪ_CHỐI",
+        },
+      },
+      "mark-equipped": {
+        summary: "Kỹ thuật viên: Đánh dấu đã trang bị",
+        description: "Kỹ thuật viên đánh dấu đã cài đặt phần mềm xong",
+        value: {
+          status: "ĐÃ_TRANG_BỊ",
         },
       },
     },
@@ -327,13 +344,38 @@ export class SoftwareProposalsController {
     type: SoftwareProposalResponseDto,
   })
   @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: "Không có quyền chỉnh sửa",
+    status: HttpStatus.BAD_REQUEST,
+    description: "Chuyển trạng thái không hợp lệ",
     schema: {
       example: {
-        statusCode: 403,
-        message: "Bạn không có quyền chỉnh sửa đề xuất này",
-        error: "Forbidden",
+        statusCode: 400,
+        message: "Không thể chuyển từ trạng thái ĐÃ_TRANG_BỊ sang CHỜ_DUYỆT",
+        error: "Bad Request",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: "Không có quyền cập nhật",
+    schema: {
+      examples: {
+        "not-owner": {
+          summary: "Không phải người tạo",
+          value: {
+            statusCode: 403,
+            message: "Bạn không có quyền cập nhật đề xuất này",
+            error: "Forbidden",
+          },
+        },
+        "insufficient-permission": {
+          summary: "Không đủ quyền chuyển trạng thái",
+          value: {
+            statusCode: 403,
+            message:
+              "Kỹ thuật viên không có quyền thực hiện chuyển đổi trạng thái này",
+            error: "Forbidden",
+          },
+        },
       },
     },
   })
@@ -343,177 +385,5 @@ export class SoftwareProposalsController {
     @CurrentUser() user: User
   ): Promise<SoftwareProposalResponseDto> {
     return this.softwareProposalsService.update(id, updateDto, user);
-  }
-
-  @Put(":id/approve")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Duyệt đề xuất phần mềm",
-    description: `
-      Duyệt một đề xuất phần mềm, chuyển trạng thái từ CHỜ_DUYỆT sang ĐÃ_DUYỆT.
-      
-      **Quyền hạn:**
-      - Cần có quyền duyệt đề xuất (thường là admin hoặc quản lý)
-      
-      **Sau khi duyệt:**
-      - Có thể tiến hành mua phần mềm và cài đặt
-      - Có thể đánh dấu "đã trang bị" sau khi hoàn thành
-    `,
-  })
-  @ApiParam({
-    name: "id",
-    description: "ID của đề xuất phần mềm cần duyệt",
-    format: "uuid",
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Duyệt đề xuất thành công",
-    type: SoftwareProposalResponseDto,
-  })
-  async approve(
-    @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() user: User
-  ): Promise<SoftwareProposalResponseDto> {
-    return this.softwareProposalsService.approve(id, user);
-  }
-
-  @Put(":id/reject")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Từ chối đề xuất phần mềm",
-    description: `
-      Từ chối một đề xuất phần mềm, chuyển trạng thái từ CHỜ_DUYỆT sang ĐÃ_TỪ_CHỐI.
-      
-      **Quyền hạn:**
-      - Cần có quyền duyệt đề xuất (thường là admin hoặc quản lý)
-      
-      **Sau khi từ chối:**
-      - Có thể chỉnh sửa lại đề xuất và gửi lại
-      - Hoặc xóa đề xuất nếu không cần thiết
-    `,
-  })
-  @ApiParam({
-    name: "id",
-    description: "ID của đề xuất phần mềm cần từ chối",
-    format: "uuid",
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Từ chối đề xuất thành công",
-    type: SoftwareProposalResponseDto,
-  })
-  async reject(
-    @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() user: User
-  ): Promise<SoftwareProposalResponseDto> {
-    return this.softwareProposalsService.reject(id, user);
-  }
-
-  @Put(":id/mark-equipped")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Đánh dấu đề xuất đã trang bị xong",
-    description: `
-      Đánh dấu một đề xuất đã được trang bị hoàn tất, chuyển trạng thái từ ĐÃ_DUYỆT sang ĐÃ_TRANG_BỊ.
-      
-      **Điều kiện:**
-      - Đề xuất phải đang ở trạng thái ĐÃ_DUYỆT
-      - Đã hoàn thành việc mua và cài đặt phần mềm
-      
-      **Quy trình thực tế:**
-      1. Đề xuất được duyệt (ĐÃ_DUYỆT)
-      2. Mua license phần mềm
-      3. Cài đặt phần mềm lên các máy tính trong phòng
-      4. Đánh dấu "đã trang bị" (ĐÃ_TRANG_BỊ)
-    `,
-  })
-  @ApiParam({
-    name: "id",
-    description: "ID của đề xuất phần mềm đã hoàn thành trang bị",
-    format: "uuid",
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Đánh dấu trang bị thành công",
-    type: SoftwareProposalResponseDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: "Đề xuất chưa được duyệt",
-    schema: {
-      example: {
-        statusCode: 400,
-        message: "Chỉ có thể đánh dấu trang bị cho đề xuất đã được duyệt",
-        error: "Bad Request",
-      },
-    },
-  })
-  async markEquipped(
-    @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() user: User
-  ): Promise<SoftwareProposalResponseDto> {
-    return this.softwareProposalsService.markEquipped(id, user);
-  }
-
-  @Delete(":id")
-  @ApiOperation({
-    summary: "Xóa đề xuất phần mềm",
-    description: `
-      Xóa một đề xuất phần mềm và tất cả các items liên quan.
-      
-      **Quyền hạn:**
-      - Chỉ người tạo đề xuất hoặc admin mới được xóa
-      
-      **Điều kiện:**
-      - Chỉ được xóa khi đang ở trạng thái CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI
-      - Không thể xóa đề xuất đã được duyệt hoặc đã trang bị
-      
-      **Lưu ý:**
-      - Thao tác này không thể hoàn tác
-      - Sẽ xóa cascade tất cả items trong đề xuất
-    `,
-  })
-  @ApiParam({
-    name: "id",
-    description: "ID của đề xuất phần mềm cần xóa",
-    format: "uuid",
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Xóa đề xuất thành công",
-    schema: {
-      example: {
-        message: 'Đã xóa đề xuất phần mềm "DXPM-2025-0001" thành công',
-      },
-    },
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: "Không có quyền xóa",
-    schema: {
-      example: {
-        statusCode: 403,
-        message: "Bạn không có quyền xóa đề xuất này",
-        error: "Forbidden",
-      },
-    },
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: "Không thể xóa do trạng thái không phù hợp",
-    schema: {
-      example: {
-        statusCode: 400,
-        message:
-          "Chỉ có thể xóa đề xuất ở trạng thái CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI",
-        error: "Bad Request",
-      },
-    },
-  })
-  async remove(
-    @Param("id", ParseUUIDPipe) id: string,
-    @CurrentUser() user: User
-  ): Promise<{ message: string }> {
-    return this.softwareProposalsService.remove(id, user);
   }
 }

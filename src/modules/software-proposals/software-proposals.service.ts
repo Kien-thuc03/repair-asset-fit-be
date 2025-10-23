@@ -177,18 +177,18 @@ export class SoftwareProposalsService {
       );
     }
 
-    // Kiểm tra quyền: chỉ người tạo hoặc admin mới được sửa
-    if (proposal.proposerId !== currentUser.id && !this.isAdmin(currentUser)) {
-      throw new ForbiddenException("Bạn không có quyền chỉnh sửa đề xuất này");
+    // Kiểm tra quyền cập nhật
+    const canUpdate = this.canUserUpdateProposal(proposal, currentUser);
+    if (!canUpdate) {
+      throw new ForbiddenException("Bạn không có quyền cập nhật đề xuất này");
     }
 
-    // Kiểm tra trạng thái: chỉ được sửa khi đang CHỜ_DUYỆT
-    if (
-      proposal.status !== SoftwareProposalStatus.CHỜ_DUYỆT &&
-      updateDto.status !== proposal.status
-    ) {
-      throw new BadRequestException(
-        "Chỉ có thể chỉnh sửa đề xuất khi đang ở trạng thái CHỜ_DUYỆT"
+    // Kiểm tra trạng thái có thể chuyển đổi
+    if (updateDto.status && updateDto.status !== proposal.status) {
+      this.validateStatusTransition(
+        proposal.status,
+        updateDto.status,
+        currentUser
       );
     }
 
@@ -214,11 +214,14 @@ export class SoftwareProposalsService {
     // Cập nhật thông tin
     Object.assign(proposal, updateDto);
 
-    // Nếu cập nhật trạng thái thành ĐÃ_DUYỆT hoặc ĐÃ_TỪ_CHỐI, cập nhật approverId
+    // Nếu cập nhật trạng thái thành ĐÃ_DUYỆT, ĐÃ_TỪ_CHỐI, hoặc ĐÃ_TRANG_BỊ, cập nhật approverId
     if (
       updateDto.status &&
-      (updateDto.status === SoftwareProposalStatus.ĐÃ_DUYỆT ||
-        updateDto.status === SoftwareProposalStatus.ĐÃ_TỪ_CHỐI)
+      [
+        SoftwareProposalStatus.ĐÃ_DUYỆT,
+        SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
+        SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
+      ].includes(updateDto.status)
     ) {
       proposal.approverId = currentUser.id;
     }
@@ -237,114 +240,6 @@ export class SoftwareProposalsService {
 
   /**
    * Duyệt đề xuất phần mềm
-   * @param id - ID đề xuất
-   * @param currentUser - Người duyệt
-   * @returns SoftwareProposalResponseDto
-   */
-  async approve(
-    id: string,
-    currentUser: User
-  ): Promise<SoftwareProposalResponseDto> {
-    return this.update(
-      id,
-      { status: SoftwareProposalStatus.ĐÃ_DUYỆT },
-      currentUser
-    );
-  }
-
-  /**
-   * Từ chối đề xuất phần mềm
-   * @param id - ID đề xuất
-   * @param currentUser - Người từ chối
-   * @returns SoftwareProposalResponseDto
-   */
-  async reject(
-    id: string,
-    currentUser: User
-  ): Promise<SoftwareProposalResponseDto> {
-    return this.update(
-      id,
-      { status: SoftwareProposalStatus.ĐÃ_TỪ_CHỐI },
-      currentUser
-    );
-  }
-
-  /**
-   * Đánh dấu đề xuất đã trang bị xong
-   * @param id - ID đề xuất
-   * @param currentUser - Người cập nhật
-   * @returns SoftwareProposalResponseDto
-   */
-  async markEquipped(
-    id: string,
-    currentUser: User
-  ): Promise<SoftwareProposalResponseDto> {
-    const proposal = await this.softwareProposalRepository.findOne({
-      where: { id },
-    });
-
-    if (!proposal) {
-      throw new NotFoundException(
-        `Không tìm thấy đề xuất phần mềm với ID: ${id}`
-      );
-    }
-
-    if (proposal.status !== SoftwareProposalStatus.ĐÃ_DUYỆT) {
-      throw new BadRequestException(
-        "Chỉ có thể đánh dấu trang bị cho đề xuất đã được duyệt"
-      );
-    }
-
-    return this.update(
-      id,
-      { status: SoftwareProposalStatus.ĐÃ_TRANG_BỊ },
-      currentUser
-    );
-  }
-
-  /**
-   * Xóa đề xuất phần mềm
-   * @param id - ID đề xuất
-   * @param currentUser - Người dùng hiện tại
-   * @returns Thông báo thành công
-   */
-  async remove(id: string, currentUser: User): Promise<{ message: string }> {
-    const proposal = await this.softwareProposalRepository.findOne({
-      where: { id },
-      relations: ["proposer", "items"],
-    });
-
-    if (!proposal) {
-      throw new NotFoundException(
-        `Không tìm thấy đề xuất phần mềm với ID: ${id}`
-      );
-    }
-
-    // Kiểm tra quyền: chỉ người tạo hoặc admin mới được xóa
-    if (proposal.proposerId !== currentUser.id && !this.isAdmin(currentUser)) {
-      throw new ForbiddenException("Bạn không có quyền xóa đề xuất này");
-    }
-
-    // Kiểm tra trạng thái: chỉ được xóa khi đang CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI
-    if (
-      ![
-        SoftwareProposalStatus.CHỜ_DUYỆT,
-        SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
-      ].includes(proposal.status)
-    ) {
-      throw new BadRequestException(
-        "Chỉ có thể xóa đề xuất ở trạng thái CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI"
-      );
-    }
-
-    // Xóa cascade sẽ tự động xóa các items
-    await this.softwareProposalRepository.remove(proposal);
-
-    return {
-      message: `Đã xóa đề xuất phần mềm "${proposal.proposalCode}" thành công`,
-    };
-  }
-
   /**
    * Sinh mã đề xuất tự động theo format DXPM-YYYY-NNNN
    * @returns Promise<string>
@@ -376,10 +271,129 @@ export class SoftwareProposalsService {
    * @param user - User cần kiểm tra
    * @returns boolean
    */
+  /**
+   * Kiểm tra user có phải admin không
+   * @param user - User cần kiểm tra
+   * @returns boolean
+   */
   private isAdmin(user: User): boolean {
-    // TODO: Implement admin role check
-    // Có thể kiểm tra qua user.roles hoặc permissions
-    return user.roles?.some((role) => role.name === "ADMIN") || false;
+    return user.roles?.some((role) => role.code === "ADMIN") || false;
+  }
+
+  /**
+   * Kiểm tra user có phải kỹ thuật viên không
+   * @param user - User cần kiểm tra
+   * @returns boolean
+   */
+  private isUserTechnician(user: User): boolean {
+    return (
+      user.roles?.some((role) =>
+        ["KY_THUAT_VIEN", "TO_TRUONG_KY_THUAT"].includes(role.code)
+      ) || false
+    );
+  }
+
+  /**
+   * Kiểm tra user có quyền cập nhật proposal không
+   * @param proposal - Đề xuất cần kiểm tra
+   * @param user - User cần kiểm tra
+   * @returns boolean
+   */
+  private canUserUpdateProposal(
+    proposal: SoftwareProposal,
+    user: User
+  ): boolean {
+    // Admin có thể cập nhật bất kỳ lúc nào
+    if (this.isAdmin(user)) {
+      return true;
+    }
+
+    // Người tạo đề xuất có thể cập nhật khi CHỜ_DUYỆT
+    if (
+      proposal.proposerId === user.id &&
+      proposal.status === SoftwareProposalStatus.CHỜ_DUYỆT
+    ) {
+      return true;
+    }
+
+    // Kỹ thuật viên có thể cập nhật trạng thái
+    if (this.isUserTechnician(user)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Validate chuyển đổi trạng thái
+   * @param fromStatus - Trạng thái hiện tại
+   * @param toStatus - Trạng thái mới
+   * @param user - User đang thực hiện
+   */
+  private validateStatusTransition(
+    fromStatus: SoftwareProposalStatus,
+    toStatus: SoftwareProposalStatus,
+    user: User
+  ): void {
+    // Admin có thể chuyển bất kỳ trạng thái nào
+    if (this.isAdmin(user)) {
+      return;
+    }
+
+    // Định nghĩa các chuyển đổi hợp lệ
+    const validTransitions: Record<
+      SoftwareProposalStatus,
+      SoftwareProposalStatus[]
+    > = {
+      [SoftwareProposalStatus.CHỜ_DUYỆT]: [
+        SoftwareProposalStatus.ĐÃ_DUYỆT,
+        SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
+      ],
+      [SoftwareProposalStatus.ĐÃ_DUYỆT]: [SoftwareProposalStatus.ĐÃ_TRANG_BỊ],
+      [SoftwareProposalStatus.ĐÃ_TỪ_CHỐI]: [
+        SoftwareProposalStatus.CHỜ_DUYỆT, // Có thể gửi lại
+      ],
+      [SoftwareProposalStatus.ĐÃ_TRANG_BỊ]: [], // Không thể chuyển từ đã trang bị
+    };
+
+    // Kiểm tra chuyển đổi có hợp lệ không
+    if (!validTransitions[fromStatus]?.includes(toStatus)) {
+      throw new BadRequestException(
+        `Không thể chuyển từ trạng thái ${fromStatus} sang ${toStatus}`
+      );
+    }
+
+    // Kiểm tra quyền của kỹ thuật viên
+    if (this.isUserTechnician(user)) {
+      // Kỹ thuật viên chỉ có thể:
+      // - Duyệt: CHỜ_DUYỆT → ĐÃ_DUYỆT
+      // - Từ chối: CHỜ_DUYỆT → ĐÃ_TỪ_CHỐI
+      // - Đánh dấu đã trang bị: ĐÃ_DUYỆT → ĐÃ_TRANG_BỊ
+      const technicianAllowedTransitions = [
+        {
+          from: SoftwareProposalStatus.CHỜ_DUYỆT,
+          to: SoftwareProposalStatus.ĐÃ_DUYỆT,
+        },
+        {
+          from: SoftwareProposalStatus.CHỜ_DUYỆT,
+          to: SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
+        },
+        {
+          from: SoftwareProposalStatus.ĐÃ_DUYỆT,
+          to: SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
+        },
+      ];
+
+      const isAllowed = technicianAllowedTransitions.some(
+        (t) => t.from === fromStatus && t.to === toStatus
+      );
+
+      if (!isAllowed) {
+        throw new ForbiddenException(
+          "Kỹ thuật viên không có quyền thực hiện chuyển đổi trạng thái này"
+        );
+      }
+    }
   }
 
   /**
