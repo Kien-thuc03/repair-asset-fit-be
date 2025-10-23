@@ -67,4 +67,20 @@ export class CreateRepairRequestDto {
     message: "Mỗi component ID phải là UUID hợp lệ",
   })
   componentIds?: string[];
+
+  @ApiPropertyOptional({
+    description: "Danh sách ID các phần mềm gặp sự cố (chỉ sử dụng khi errorType là MAY_HU_PHAN_MEM)",
+    type: [String],
+    example: [
+      "d52a67b3-155f-4d30-8134-94de8fecf657",
+      "1aa594ca-83f6-4b07-bad1-a6f88d5ece3f",
+    ],
+  })
+  @IsOptional()
+  @IsArray({ message: "Software IDs phải là mảng" })
+  @IsUUID("all", {
+    each: true,
+    message: "Mỗi software ID phải là UUID hợp lệ",
+  })
+  softwareIds?: string[];
 }

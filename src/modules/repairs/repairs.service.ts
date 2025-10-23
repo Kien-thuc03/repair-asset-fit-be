@@ -12,6 +12,9 @@ import { RepairRequest } from "src/entities/repair-request.entity";
 import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
+import { Computer } from "src/entities/computer.entity";
+import { AssetSoftware } from "src/entities/asset-software.entity";
+import { Software } from "src/entities/software.entity";
 import { CreateRepairRequestDto } from "./dto/create-repair-request.dto";
 import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
@@ -31,7 +34,13 @@ export class RepairsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(ComputerComponent)
-    private readonly computerComponentRepository: Repository<ComputerComponent>
+    private readonly computerComponentRepository: Repository<ComputerComponent>,
+    @InjectRepository(Computer)
+    private readonly computerRepository: Repository<Computer>,
+    @InjectRepository(AssetSoftware)
+    private readonly assetSoftwareRepository: Repository<AssetSoftware>,
+    @InjectRepository(Software)
+    private readonly softwareRepository: Repository<Software>
   ) {}
 
   /**
@@ -105,11 +114,46 @@ export class RepairsService {
       }
     }
 
+    // 5.1. Kiểm tra các software IDs nếu có (chỉ khi errorType là MAY_HU_PHAN_MEM)
+    if (createDto.softwareIds && createDto.softwareIds.length > 0) {
+      // Kiểm tra errorType phải là MAY_HU_PHAN_MEM
+      if (createDto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
+        throw new BadRequestException(
+          'Software IDs chỉ có thể sử dụng khi errorType là MAY_HU_PHAN_MEM'
+        );
+      }
+
+      // Kiểm tra software có tồn tại và được cài đặt trong asset này không
+      const assetSoftwareList = await this.assetSoftwareRepository
+        .createQueryBuilder('asw')
+        .leftJoinAndSelect('asw.software', 's')
+        .where('asw.assetId = :assetId', { assetId: createDto.computerAssetId })
+        .andWhere('s.id IN (:...softwareIds)', { softwareIds: createDto.softwareIds })
+        .andWhere('s.deletedAt IS NULL')
+        .getMany();
+
+      if (assetSoftwareList.length !== createDto.softwareIds.length) {
+        const foundSoftwareIds = assetSoftwareList.map((asw) => asw.softwareId);
+        const notFoundIds = createDto.softwareIds.filter(
+          (id) => !foundSoftwareIds.includes(id)
+        );
+        throw new BadRequestException(
+          `Không tìm thấy hoặc chưa cài đặt các software với ID: ${notFoundIds.join(", ")} trong computer này`
+        );
+      }
+
+      // Thêm thông tin software vào description để theo dõi
+      const softwareNames = assetSoftwareList.map((asw) => 
+        `${asw.software.name} ${asw.software.version ? 'v' + asw.software.version : ''}`.trim()
+      );
+      createDto.description += `\n\n[Phần mềm gặp sự cố: ${softwareNames.join(', ')}]`;
+    }
+
     // 6. Sinh mã yêu cầu tự động (YCSC-YYYY-NNNN)
     const requestCode = await this.generateRequestCode();
 
-    // 7. Tạo repair request mới (loại bỏ componentIds khỏi createDto)
-    const { componentIds, ...requestData } = createDto;
+    // 7. Tạo repair request mới (loại bỏ componentIds và softwareIds khỏi createDto)
+    const { componentIds, softwareIds, ...requestData } = createDto;
     const repairRequest = this.repairRequestRepository.create({
       ...requestData,
       requestCode,
