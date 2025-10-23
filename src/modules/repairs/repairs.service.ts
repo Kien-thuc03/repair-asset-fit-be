@@ -185,7 +185,21 @@ export class RepairsService {
       await this.assetRepository.save(asset);
     }
 
-    // 11. Lấy thông tin đầy đủ với relations
+    // 11. Tự động phân công kỹ thuật viên dựa trên vị trí asset
+    if (asset.currentRoom) {
+      const assignedTechnician = await this.autoAssignTechnician(
+        asset.currentRoom.id,
+        asset.currentRoom.building,
+        asset.currentRoom.floor
+      );
+
+      if (assignedTechnician) {
+        savedRequest.assignedTechnicianId = assignedTechnician.id;
+        await this.repairRequestRepository.save(savedRequest);
+      }
+    }
+
+    // 12. Lấy thông tin đầy đủ với relations
     const fullRequest = await this.repairRequestRepository.findOne({
       where: { id: savedRequest.id },
       relations: [
@@ -197,7 +211,7 @@ export class RepairsService {
       ],
     });
 
-    // 12. Transform và trả về DTO
+    // 13. Transform và trả về DTO
     return this.transformToResponseDto(fullRequest);
   }
 
@@ -1143,5 +1157,114 @@ export class RepairsService {
         ["TECHNICIAN", "LEAD_TECHNICIAN"].includes(role.name)
       ) || false
     );
+  }
+
+  /**
+   * Tự động phân công kỹ thuật viên phù hợp dựa trên vị trí phòng
+   * - Tìm các KTV được phân công cho tầng hoặc tòa nhà
+   * - Chọn KTV có ít yêu cầu đang xử lý nhất
+   * @param roomId - ID phòng
+   * @param building - Tên tòa nhà
+   * @param floor - Tên tầng
+   * @returns User (KTV được chọn) hoặc null nếu không tìm thấy
+   */
+  private async autoAssignTechnician(
+    roomId: string,
+    building: string,
+    floor: string
+  ): Promise<User | null> {
+    try {
+      // 1. Tìm các KTV được phân công cho tầng hoặc tòa nhà
+      const assignments = await this.technicianAssignmentRepository
+        .createQueryBuilder("assignment")
+        .leftJoinAndSelect("assignment.technician", "technician")
+        .leftJoinAndSelect("technician.roles", "roles")
+        .where("assignment.building = :building", { building })
+        .andWhere(
+          "(assignment.floor = :floor OR assignment.floor IS NULL)",
+          { floor }
+        )
+        .andWhere("technician.deletedAt IS NULL")
+        .getMany();
+
+      if (assignments.length === 0) {
+        console.warn(
+          `Không tìm thấy kỹ thuật viên được phân công cho tầng ${floor} tòa ${building}`
+        );
+        return null;
+      }
+
+      // 2. Lấy danh sách KTV
+      const technicians = assignments.map((a) => a.technician);
+
+      // 3. Đếm số lượng yêu cầu đang xử lý của từng KTV
+      const technicianWorkloads = await Promise.all(
+        technicians.map(async (technician) => {
+          const ongoingCount = await this.repairRequestRepository.count({
+            where: {
+              assignedTechnicianId: technician.id,
+              status: RepairStatus.ĐANG_XỬ_LÝ,
+            },
+          });
+
+          const acceptedCount = await this.repairRequestRepository.count({
+            where: {
+              assignedTechnicianId: technician.id,
+              status: RepairStatus.ĐÃ_TIẾP_NHẬN,
+            },
+          });
+
+          return {
+            technician,
+            workload: ongoingCount + acceptedCount,
+          };
+        })
+      );
+
+      // 4. Sắp xếp theo workload tăng dần và chọn KTV có ít việc nhất
+      technicianWorkloads.sort((a, b) => a.workload - b.workload);
+
+      const selectedTechnician = technicianWorkloads[0].technician;
+
+      console.log(
+        `Tự động phân công KTV: ${selectedTechnician.fullName} (${selectedTechnician.username}) ` +
+          `cho phòng ${roomId} - Workload hiện tại: ${technicianWorkloads[0].workload}`
+      );
+
+      return selectedTechnician;
+    } catch (error) {
+      console.error("Lỗi khi tự động phân công kỹ thuật viên:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Lấy danh sách kỹ thuật viên phụ trách một phòng cụ thể
+   * @param roomId - ID của phòng
+   * @returns Danh sách User (các KTV phụ trách)
+   */
+  async getTechniciansForRoom(roomId: string): Promise<User[]> {
+    const room = await this.roomRepository.findOne({
+      where: { id: roomId },
+    });
+
+    if (!room) {
+      throw new NotFoundException(`Không tìm thấy phòng với ID: ${roomId}`);
+    }
+
+    // Tìm các KTV được phân công cho tầng cụ thể hoặc cả tòa nhà
+    const assignments = await this.technicianAssignmentRepository
+      .createQueryBuilder("assignment")
+      .leftJoinAndSelect("assignment.technician", "technician")
+      .leftJoinAndSelect("technician.roles", "roles")
+      .where("assignment.building = :building", { building: room.building })
+      .andWhere(
+        "(assignment.floor = :floor OR assignment.floor IS NULL)",
+        { floor: room.floor }
+      )
+      .andWhere("technician.deletedAt IS NULL")
+      .getMany();
+
+    return assignments.map((a) => a.technician);
   }
 }
