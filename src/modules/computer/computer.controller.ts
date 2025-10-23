@@ -19,4 +19,15 @@ export class ComputerController {
   getComputersByRoom(@Param('roomId') roomId: string) {
     return this.computerService.getComputersByRoom(roomId);
   }
+  /**
+   * GET /computers
+   * Lấy tất cả máy tính 
+   * 
+   * @returns Danh sách máy tính kèm thông tin asset, room và components
+   */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  getAllComputers() {
+    return this.computerService.getAllComputers();
+  }
 }
