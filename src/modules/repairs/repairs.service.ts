@@ -560,24 +560,25 @@ export class RepairsService {
       .where("r.building = :building", { building })
       .andWhere("r.floor = :floor", { floor });
 
-    const [
-      pendingRequests,
-      inProgressRequests,
-      waitingReplacementRequests,
-    ] = await Promise.all([
-      baseQuery
-        .clone()
-        .andWhere("rr.status = :status", { status: RepairStatus.ĐÃ_TIẾP_NHẬN })
-        .getCount(),
-      baseQuery
-        .clone()
-        .andWhere("rr.status = :status", { status: RepairStatus.ĐANG_XỬ_LÝ })
-        .getCount(),
-      baseQuery
-        .clone()
-        .andWhere("rr.status = :status", { status: RepairStatus.CHỜ_THAY_THẾ })
-        .getCount(),
-    ]);
+    const [pendingRequests, inProgressRequests, waitingReplacementRequests] =
+      await Promise.all([
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", {
+            status: RepairStatus.ĐÃ_TIẾP_NHẬN,
+          })
+          .getCount(),
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", { status: RepairStatus.ĐANG_XỬ_LÝ })
+          .getCount(),
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", {
+            status: RepairStatus.CHỜ_THAY_THẾ,
+          })
+          .getCount(),
+      ]);
 
     return {
       pendingRequests,
@@ -740,9 +741,7 @@ export class RepairsService {
     if (isTechnician && !isAdmin) {
       const room = repairRequest.computerAsset?.currentRoom;
       if (!room) {
-        throw new BadRequestException(
-          "Không thể xác định vị trí của tài sản"
-        );
+        throw new BadRequestException("Không thể xác định vị trí của tài sản");
       }
 
       const assignments = await this.technicianAssignmentRepository.find({

@@ -1,6 +1,7 @@
 # 🔧 Hướng Dẫn Test API Quản Lý Yêu Cầu Sửa Chữa
 
 ## 📋 Mục Lục
+
 1. [Chuẩn bị](#chuẩn-bị)
 2. [Test Cases cho PUT /api/v1/repairs/{id}](#test-cases-cho-put-apiv1repairsid)
 3. [Test Cases cho các endpoint chuyên biệt](#test-cases-cho-các-endpoint-chuyên-biệt)
@@ -10,26 +11,32 @@
 ## 🔐 Chuẩn Bị
 
 ### 1. Xác Thực (Authentication)
+
 Trước khi test, cần đăng nhập để lấy JWT token:
 
 **POST `/api/v1/auth/login`**
+
 ```json
 {
   "username": "21012345",
   "password": "your_password"
 }
 ```
+
 **Lưu JWT token từ response để sử dụng trong Authorization header: `Bearer <token>`**
 
 ### 2. Dữ Liệu Test Thực Tế
+
 Các ID có sẵn trong hệ thống để test:
 
 **Repair Requests:**
+
 - `8f0d400e-74f5-4415-a668-3eb37137bda1` (YCSC-2025-0006) - CHỜ_TIẾP_NHẬN - MAY_KHONG_KHOI_DONG
 - `492cc814-35ff-477b-b548-d1cce630d5eb` (YCSC-2025-0005) - CHỜ_TIẾP_NHẬN - MAY_HU_PHAN_MEM
 - `de0cdae2-1780-4f01-bad3-17f2127fc048` (YCSC-2025-0004) - CHỜ_TIẾP_NHẬN - MAY_HU_PHAN_MEM
 
 **Users với quyền phù hợp:**
+
 - `47d9013d-6c7e-48d2-8443-6300632ed811` (Kỹ thuật viên)
 - `a949c9da-d9b4-43b1-82f4-9dd3250a749d` (Tổ trưởng Kỹ thuật)
 - `26c8ba48-3be3-42e3-b28a-5a109f383b6a` (Trưởng phòng quản trị)
@@ -37,6 +44,7 @@ Các ID có sẵn trong hệ thống để test:
 ## 🧪 Test Cases cho PUT `/api/v1/repairs/{id}`
 
 ### Test Case 1: Tiếp Nhận Yêu Cầu
+
 **Mô tả:** Chuyển từ CHỜ_TIẾP_NHẬN → ĐÃ_TIẾP_NHẬN
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 **Quyền:** Kỹ thuật viên trở lên
@@ -48,6 +56,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 **Expected Response: 200 OK**
+
 ```json
 {
   "id": "8f0d400e-74f5-4415-a668-3eb37137bda1",
@@ -59,6 +68,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 ### Test Case 2: Phân Công Và Bắt Đầu Xử Lý
+
 **Mô tả:** Phân công kỹ thuật viên và chuyển sang ĐANG_XỬ_LÝ
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 **Điều kiện:** Phải chạy Test Case 1 trước
@@ -72,6 +82,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 ### Test Case 3: Cập Nhật Mô Tả Chi Tiết Lỗi Phần Mềm
+
 **Mô tả:** Bổ sung thông tin chi tiết về lỗi Office
 **Endpoint:** `PUT /api/v1/repairs/492cc814-35ff-477b-b548-d1cce630d5eb`
 
@@ -88,6 +99,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 ### Test Case 4: Chuyển Sang Chờ Thay Thế
+
 **Mô tả:** Xác định cần thay thế linh kiện
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 **Điều kiện:** Phải chạy Test Case 2 trước
@@ -100,6 +112,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 ### Test Case 5: Hoàn Thành Sửa Chữa Phần Cứng
+
 **Mô tả:** Kết thúc quá trình sửa chữa thành công
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 **Điều kiện:** Phải chạy Test Case 4 trước
@@ -112,10 +125,12 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 ### Test Case 6: Hoàn Thành Sửa Chữa Phần Mềm
+
 **Mô tả:** Khắc phục lỗi Microsoft Office
 **Endpoint:** `PUT /api/v1/repairs/492cc814-35ff-477b-b548-d1cce630d5eb`
 
 **Cần tiếp nhận và bắt đầu xử lý trước:**
+
 ```json
 {
   "status": "ĐÃ_TIẾP_NHẬN"
@@ -123,6 +138,7 @@ Các ID có sẵn trong hệ thống để test:
 ```
 
 Sau đó:
+
 ```json
 {
   "status": "ĐANG_XỬ_LÝ",
@@ -131,6 +147,7 @@ Sau đó:
 ```
 
 Cuối cùng hoàn thành:
+
 ```json
 {
   "status": "ĐÃ_HOÀN_THÀNH",
@@ -140,6 +157,7 @@ Cuối cùng hoàn thành:
 ```
 
 ### Test Case 7: Hủy Yêu Cầu - Người Dùng Tự Khắc Phục
+
 **Mô tả:** Hủy yêu cầu do người dùng đã tự xử lý
 **Endpoint:** `PUT /api/v1/repairs/de0cdae2-1780-4f01-bad3-17f2127fc048`
 
@@ -153,14 +171,17 @@ Cuối cùng hoàn thành:
 ## 🚀 Test Cases Cho Các Endpoint Chuyên Biệt
 
 ### Test Case 8: Accept Request
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1/accept`
 
 ```json
 {}
 ```
+
 **Expected Response: 200 OK với acceptedAt timestamp**
 
 ### Test Case 9: Assign Technician
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1/assign`
 **Điều kiện:** Request phải ở trạng thái ĐÃ_TIẾP_NHẬN
 
@@ -172,6 +193,7 @@ Cuối cùng hoàn thành:
 ```
 
 ### Test Case 10: Start Processing
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1/start-processing`
 **Điều kiện:** Phải có technician được assign
 
@@ -182,6 +204,7 @@ Cuối cùng hoàn thành:
 ```
 
 ### Test Case 11: Complete Request
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1/complete`
 
 ```json
@@ -191,6 +214,7 @@ Cuối cùng hoàn thành:
 ```
 
 ### Test Case 12: Cancel Request
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1/cancel`
 
 ```json
@@ -202,6 +226,7 @@ Cuối cùng hoàn thành:
 ## ❌ Test Cases Lỗi và Validation
 
 ### Test Case 13: Chuyển Trạng Thái Không Hợp Lệ
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 
 ```json
@@ -209,7 +234,9 @@ Cuối cùng hoàn thành:
   "status": "ĐÃ_HOÀN_THÀNH"
 }
 ```
+
 **Expected: 400 Bad Request**
+
 ```json
 {
   "statusCode": 400,
@@ -219,6 +246,7 @@ Cuối cùng hoàn thành:
 ```
 
 ### Test Case 14: ID Không Tồn Tại
+
 **Endpoint:** `PUT /api/v1/repairs/00000000-0000-0000-0000-000000000000`
 
 ```json
@@ -226,9 +254,11 @@ Cuối cùng hoàn thành:
   "status": "ĐÃ_TIẾP_NHẬN"
 }
 ```
+
 **Expected: 404 Not Found**
 
 ### Test Case 15: Thiếu Quyền Truy Cập
+
 **Mô tả:** Sử dụng token của user không có quyền
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 
@@ -237,9 +267,11 @@ Cuối cùng hoàn thành:
   "status": "ĐÃ_TIẾP_NHẬN"
 }
 ```
+
 **Expected: 403 Forbidden**
 
 ### Test Case 16: Validation Lỗi
+
 **Endpoint:** `PUT /api/v1/repairs/8f0d400e-74f5-4415-a668-3eb37137bda1`
 
 ```json
@@ -249,11 +281,13 @@ Cuối cùng hoàn thành:
   "description": ""
 }
 ```
+
 **Expected: 400 Bad Request với chi tiết lỗi validation**
 
 ## 📊 Quy Trình Test Hoàn Chỉnh
 
 ### Scenario A: Sửa Chữa Phần Cứng Thành Công
+
 1. **Login** → Lấy JWT token
 2. **Test Case 1** (Tiếp nhận) → CHỜ_TIẾP_NHẬN → ĐÃ_TIẾP_NHẬN
 3. **Test Case 2** (Phân công + bắt đầu) → ĐÃ_TIẾP_NHẬN → ĐANG_XỬ_LÝ
@@ -261,20 +295,24 @@ Cuối cùng hoàn thành:
 5. **Test Case 5** (Hoàn thành) → CHỜ_THAY_THẾ → ĐÃ_HOÀN_THÀNH
 
 **Verify:**
+
 - ✅ Timestamps được cập nhật đúng
 - ✅ Asset status được cập nhật
 - ✅ Logs được ghi nhận đầy đủ
 
 ### Scenario B: Sửa Chữa Phần Mềm
+
 1. **Test Case 3** (Cập nhật mô tả chi tiết)
 2. **Tiếp nhận và phân công**
 3. **Test Case 6** (Hoàn thành sửa phần mềm)
 
 ### Scenario C: Hủy Yêu Cầu
+
 1. **Test Case 7** (Hủy với lý do hợp lý)
 2. **Verify** asset status được restore
 
 ### Scenario D: Test Validation và Error Handling
+
 1. **Test Case 13-16** (Các trường hợp lỗi)
 2. **Verify** error responses và status codes
 
@@ -283,24 +321,28 @@ Cuối cùng hoàn thành:
 Sau mỗi test case, verify:
 
 ### Response Validation:
+
 - [ ] Status code đúng (200, 400, 403, 404)
 - [ ] Response body có đầy đủ thông tin
 - [ ] Timestamps được format đúng ISO 8601
 - [ ] Relationships được load đầy đủ
 
 ### Database Consistency:
+
 - [ ] repair_requests table được cập nhật
 - [ ] repair_logs có entry mới (nếu cần)
 - [ ] assets status được sync
 - [ ] Foreign keys vẫn consistent
 
 ### Business Logic:
+
 - [ ] Status transitions tuân theo quy tắc
 - [ ] Permission checks hoạt động đúng
 - [ ] Validation rules được enforce
 - [ ] Timestamps logic đúng (acceptedAt, completedAt)
 
 ### Error Handling:
+
 - [ ] Error messages rõ ràng và hữu ích
 - [ ] Không leak sensitive information
 - [ ] Consistent error format
@@ -309,12 +351,14 @@ Sau mỗi test case, verify:
 ## 📈 Performance Testing
 
 ### Load Testing:
+
 - Test với 50+ concurrent requests
 - Verify response time < 500ms
 - Check database connection pooling
 - Monitor memory usage
 
 ### Edge Cases:
+
 - Very long descriptions (1900+ characters)
 - Multiple rapid status changes
 - Concurrent updates by different users
