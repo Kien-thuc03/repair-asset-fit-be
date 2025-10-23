@@ -69,7 +69,8 @@ export class CreateRepairRequestDto {
   componentIds?: string[];
 
   @ApiPropertyOptional({
-    description: "Danh sách ID các phần mềm gặp sự cố (chỉ sử dụng khi errorType là MAY_HU_PHAN_MEM)",
+    description:
+      "Danh sách ID các phần mềm gặp sự cố (chỉ sử dụng khi errorType là MAY_HU_PHAN_MEM)",
     type: [String],
     example: [
       "d52a67b3-155f-4d30-8134-94de8fecf657",

@@ -13,13 +13,13 @@ import { Software } from "src/entities/software.entity";
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      RepairRequest, 
-      Asset, 
-      User, 
+      RepairRequest,
+      Asset,
+      User,
       ComputerComponent,
       Computer,
       AssetSoftware,
-      Software
+      Software,
     ]),
   ],
   controllers: [RepairsController],

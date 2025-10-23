@@ -119,17 +119,19 @@ export class RepairsService {
       // Kiểm tra errorType phải là MAY_HU_PHAN_MEM
       if (createDto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
         throw new BadRequestException(
-          'Software IDs chỉ có thể sử dụng khi errorType là MAY_HU_PHAN_MEM'
+          "Software IDs chỉ có thể sử dụng khi errorType là MAY_HU_PHAN_MEM"
         );
       }
 
       // Kiểm tra software có tồn tại và được cài đặt trong asset này không
       const assetSoftwareList = await this.assetSoftwareRepository
-        .createQueryBuilder('asw')
-        .leftJoinAndSelect('asw.software', 's')
-        .where('asw.assetId = :assetId', { assetId: createDto.computerAssetId })
-        .andWhere('s.id IN (:...softwareIds)', { softwareIds: createDto.softwareIds })
-        .andWhere('s.deletedAt IS NULL')
+        .createQueryBuilder("asw")
+        .leftJoinAndSelect("asw.software", "s")
+        .where("asw.assetId = :assetId", { assetId: createDto.computerAssetId })
+        .andWhere("s.id IN (:...softwareIds)", {
+          softwareIds: createDto.softwareIds,
+        })
+        .andWhere("s.deletedAt IS NULL")
         .getMany();
 
       if (assetSoftwareList.length !== createDto.softwareIds.length) {
@@ -143,10 +145,10 @@ export class RepairsService {
       }
 
       // Thêm thông tin software vào description để theo dõi
-      const softwareNames = assetSoftwareList.map((asw) => 
-        `${asw.software.name} ${asw.software.version ? 'v' + asw.software.version : ''}`.trim()
+      const softwareNames = assetSoftwareList.map((asw) =>
+        `${asw.software.name} ${asw.software.version ? "v" + asw.software.version : ""}`.trim()
       );
-      createDto.description += `\n\n[Phần mềm gặp sự cố: ${softwareNames.join(', ')}]`;
+      createDto.description += `\n\n[Phần mềm gặp sự cố: ${softwareNames.join(", ")}]`;
     }
 
     // 6. Sinh mã yêu cầu tự động (YCSC-YYYY-NNNN)
