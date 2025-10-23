@@ -387,7 +387,12 @@ export class RepairsService {
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ["reporter", "assignedTechnician"],
+      relations: [
+        "reporter",
+        "assignedTechnician",
+        "computerAsset",
+        "computerAsset.currentRoom",
+      ],
     });
 
     if (!repairRequest) {
@@ -397,9 +402,21 @@ export class RepairsService {
     }
 
     // Kiểm tra quyền cập nhật
-    const canUpdate = this.canUserUpdateRequest(repairRequest, currentUser);
+    const canUpdate = await this.canUserUpdateRequest(
+      repairRequest,
+      currentUser
+    );
     if (!canUpdate) {
       throw new ForbiddenException("Bạn không có quyền cập nhật yêu cầu này");
+    }
+
+    // Tự động gán kỹ thuật viên khi chuyển sang ĐÃ_TIẾP_NHẬN
+    if (
+      updateDto.status === RepairStatus.ĐÃ_TIẾP_NHẬN &&
+      !repairRequest.assignedTechnicianId &&
+      this.isUserTechnician(currentUser)
+    ) {
+      repairRequest.assignedTechnicianId = currentUser.id;
     }
 
     // Validate status transition nếu có
@@ -1051,7 +1068,15 @@ export class RepairsService {
    * @param user - User
    * @returns boolean
    */
-  private canUserUpdateRequest(request: RepairRequest, user: User): boolean {
+  private async canUserUpdateRequest(
+    request: RepairRequest,
+    user: User
+  ): Promise<boolean> {
+    // Admin có thể sửa bất kỳ lúc nào
+    if (this.isAdmin(user)) {
+      return true;
+    }
+
     // Người báo lỗi có thể sửa khi CHỜ_TIẾP_NHẬN
     if (
       request.reporterId === user.id &&
@@ -1065,8 +1090,27 @@ export class RepairsService {
       return true;
     }
 
-    // Admin có thể sửa bất kỳ lúc nào
-    return this.isAdmin(user);
+    // Kỹ thuật viên có thể tự tiếp nhận yêu cầu trong tầng được phân công
+    if (this.isUserTechnician(user)) {
+      // Lấy thông tin phòng của tài sản
+      const room = request.computerAsset?.currentRoom;
+      if (!room) {
+        return false; // Không có thông tin phòng
+      }
+
+      // Kiểm tra kỹ thuật viên có được phân công cho tầng này không
+      const assignment = await this.technicianAssignmentRepository.findOne({
+        where: {
+          technicianId: user.id,
+          building: room.building,
+          floor: room.floor,
+        },
+      });
+
+      return !!assignment; // Có assignment → có quyền
+    }
+
+    return false;
   }
 
   /**
@@ -1141,8 +1185,7 @@ export class RepairsService {
    * @returns boolean
    */
   private isAdmin(user: User): boolean {
-    // TODO: Implement admin role check
-    return user.roles?.some((role) => role.name === "ADMIN") || false;
+    return user.roles?.some((role) => role.code === "ADMIN") || false;
   }
 
   /**
@@ -1151,10 +1194,9 @@ export class RepairsService {
    * @returns boolean
    */
   private isUserTechnician(user: User): boolean {
-    // TODO: Implement technician role check
     return (
       user.roles?.some((role) =>
-        ["TECHNICIAN", "LEAD_TECHNICIAN"].includes(role.name)
+        ["KY_THUAT_VIEN", "TO_TRUONG_KY_THUAT"].includes(role.code)
       ) || false
     );
   }
