@@ -12,10 +12,15 @@ import { RepairRequest } from "src/entities/repair-request.entity";
 import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
+import { Computer } from "src/entities/computer.entity";
+import { AssetSoftware } from "src/entities/asset-software.entity";
+import { Software } from "src/entities/software.entity";
+import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
+import { Room } from "src/entities/room.entity";
 import { CreateRepairRequestDto } from "./dto/create-repair-request.dto";
 import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
-import { AssignTechnicianDto } from "./dto/assign-technician.dto";
+import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
 import { RepairStatus } from "src/common/shared/RepairStatus";
 import { AssetStatus } from "src/common/shared/AssetStatus";
@@ -31,7 +36,17 @@ export class RepairsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(ComputerComponent)
-    private readonly computerComponentRepository: Repository<ComputerComponent>
+    private readonly computerComponentRepository: Repository<ComputerComponent>,
+    @InjectRepository(Computer)
+    private readonly computerRepository: Repository<Computer>,
+    @InjectRepository(AssetSoftware)
+    private readonly assetSoftwareRepository: Repository<AssetSoftware>,
+    @InjectRepository(Software)
+    private readonly softwareRepository: Repository<Software>,
+    @InjectRepository(TechnicianAssignment)
+    private readonly technicianAssignmentRepository: Repository<TechnicianAssignment>,
+    @InjectRepository(Room)
+    private readonly roomRepository: Repository<Room>
   ) {}
 
   /**
@@ -105,11 +120,48 @@ export class RepairsService {
       }
     }
 
+    // 5.1. Kiểm tra các software IDs nếu có (chỉ khi errorType là MAY_HU_PHAN_MEM)
+    if (createDto.softwareIds && createDto.softwareIds.length > 0) {
+      // Kiểm tra errorType phải là MAY_HU_PHAN_MEM
+      if (createDto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
+        throw new BadRequestException(
+          "Software IDs chỉ có thể sử dụng khi errorType là MAY_HU_PHAN_MEM"
+        );
+      }
+
+      // Kiểm tra software có tồn tại và được cài đặt trong asset này không
+      const assetSoftwareList = await this.assetSoftwareRepository
+        .createQueryBuilder("asw")
+        .leftJoinAndSelect("asw.software", "s")
+        .where("asw.assetId = :assetId", { assetId: createDto.computerAssetId })
+        .andWhere("s.id IN (:...softwareIds)", {
+          softwareIds: createDto.softwareIds,
+        })
+        .andWhere("s.deletedAt IS NULL")
+        .getMany();
+
+      if (assetSoftwareList.length !== createDto.softwareIds.length) {
+        const foundSoftwareIds = assetSoftwareList.map((asw) => asw.softwareId);
+        const notFoundIds = createDto.softwareIds.filter(
+          (id) => !foundSoftwareIds.includes(id)
+        );
+        throw new BadRequestException(
+          `Không tìm thấy hoặc chưa cài đặt các software với ID: ${notFoundIds.join(", ")} trong computer này`
+        );
+      }
+
+      // Thêm thông tin software vào description để theo dõi
+      const softwareNames = assetSoftwareList.map((asw) =>
+        `${asw.software.name} ${asw.software.version ? "v" + asw.software.version : ""}`.trim()
+      );
+      createDto.description += `\n\n[Phần mềm gặp sự cố: ${softwareNames.join(", ")}]`;
+    }
+
     // 6. Sinh mã yêu cầu tự động (YCSC-YYYY-NNNN)
     const requestCode = await this.generateRequestCode();
 
-    // 7. Tạo repair request mới (loại bỏ componentIds khỏi createDto)
-    const { componentIds, ...requestData } = createDto;
+    // 7. Tạo repair request mới (loại bỏ componentIds và softwareIds khỏi createDto)
+    const { componentIds, softwareIds, ...requestData } = createDto;
     const repairRequest = this.repairRequestRepository.create({
       ...requestData,
       requestCode,
@@ -409,19 +461,260 @@ export class RepairsService {
   }
 
   /**
-   * Phân công kỹ thuật viên
+   * Lấy danh sách tầng được phân công cho kỹ thuật viên
+   * @param user - Kỹ thuật viên hiện tại
+   * @returns Danh sách tầng và thống kê yêu cầu
+   */
+  async getAssignedFloors(user: User) {
+    // Kiểm tra quyền - chỉ kỹ thuật viên mới cần kiểm tra assigned floors
+    const isTechnician = this.isUserTechnician(user);
+    const isAdmin = this.isAdmin(user);
+
+    if (!isTechnician && !isAdmin) {
+      throw new ForbiddenException(
+        "Bạn không có quyền xem danh sách tầng được phân công"
+      );
+    }
+
+    // Admin hoặc tổ trưởng có thể xem tất cả
+    if (isAdmin) {
+      // Lấy tất cả building/floor từ rooms
+      const floors = await this.roomRepository
+        .createQueryBuilder("room")
+        .select(["room.building", "room.floor"])
+        .distinct(true)
+        .orderBy("room.building", "ASC")
+        .addOrderBy("room.floor", "ASC")
+        .getRawMany();
+
+      const assignedFloors = await Promise.all(
+        floors.map(async (floor) => {
+          const stats = await this.getFloorStatistics(
+            floor.room_building,
+            floor.room_floor
+          );
+          return {
+            building: floor.room_building,
+            floor: floor.room_floor,
+            ...stats,
+          };
+        })
+      );
+
+      return {
+        assignedFloors,
+        totalAssignedFloors: assignedFloors.length,
+        totalPendingRequests: assignedFloors.reduce(
+          (sum, f) => sum + f.pendingRequests,
+          0
+        ),
+      };
+    }
+
+    // Kỹ thuật viên thường chỉ xem tầng được phân công
+    const assignments = await this.technicianAssignmentRepository.find({
+      where: { technicianId: user.id },
+      order: { building: "ASC", floor: "ASC" },
+    });
+
+    if (assignments.length === 0) {
+      return {
+        assignedFloors: [],
+        totalAssignedFloors: 0,
+        totalPendingRequests: 0,
+      };
+    }
+
+    const assignedFloors = await Promise.all(
+      assignments.map(async (assignment) => {
+        const stats = await this.getFloorStatistics(
+          assignment.building,
+          assignment.floor
+        );
+        return {
+          building: assignment.building,
+          floor: assignment.floor,
+          ...stats,
+        };
+      })
+    );
+
+    return {
+      assignedFloors,
+      totalAssignedFloors: assignedFloors.length,
+      totalPendingRequests: assignedFloors.reduce(
+        (sum, f) => sum + f.pendingRequests,
+        0
+      ),
+    };
+  }
+
+  /**
+   * Lấy thống kê yêu cầu theo tầng
+   */
+  private async getFloorStatistics(building: string, floor: string) {
+    const baseQuery = this.repairRequestRepository
+      .createQueryBuilder("rr")
+      .innerJoin("assets", "a", "rr.computerAssetId = a.id")
+      .innerJoin("rooms", "r", "a.currentRoomId = r.id")
+      .where("r.building = :building", { building })
+      .andWhere("r.floor = :floor", { floor });
+
+    const [pendingRequests, inProgressRequests, waitingReplacementRequests] =
+      await Promise.all([
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", {
+            status: RepairStatus.ĐÃ_TIẾP_NHẬN,
+          })
+          .getCount(),
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", { status: RepairStatus.ĐANG_XỬ_LÝ })
+          .getCount(),
+        baseQuery
+          .clone()
+          .andWhere("rr.status = :status", {
+            status: RepairStatus.CHỜ_THAY_THẾ,
+          })
+          .getCount(),
+      ]);
+
+    return {
+      pendingRequests,
+      inProgressRequests,
+      waitingReplacementRequests,
+    };
+  }
+
+  /**
+   * Lấy danh sách yêu cầu theo tầng
+   * @param filter - Filter parameters
+   * @param user - User hiện tại
+   * @returns Danh sách yêu cầu
+   */
+  async findByFloor(
+    filter: RepairRequestFilterDto & { building?: string; floor?: string },
+    user: User
+  ) {
+    const isTechnician = this.isUserTechnician(user);
+    const isAdmin = this.isAdmin(user);
+
+    if (!isTechnician && !isAdmin) {
+      throw new ForbiddenException("Bạn không có quyền xem yêu cầu sửa chữa");
+    }
+
+    // Build base query
+    const queryBuilder = this.repairRequestRepository
+      .createQueryBuilder("rr")
+      .leftJoinAndSelect("rr.computerAsset", "asset")
+      .leftJoinAndSelect("asset.currentRoom", "room")
+      .leftJoinAndSelect("room.unit", "unit")
+      .leftJoinAndSelect("rr.reportedByUser", "reporter")
+      .leftJoinAndSelect("rr.assignedTechnician", "technician");
+
+    // Nếu là kỹ thuật viên thường, chỉ xem yêu cầu trong tầng được phân công
+    if (isTechnician && !isAdmin) {
+      const assignments = await this.technicianAssignmentRepository.find({
+        where: { technicianId: user.id },
+      });
+
+      if (assignments.length === 0) {
+        return {
+          items: [],
+          total: 0,
+        };
+      }
+
+      // Build OR conditions for each assignment
+      const conditions = assignments.map((assignment, index) => {
+        const params: any = {};
+        params[`building_${index}`] = assignment.building;
+        params[`floor_${index}`] = assignment.floor;
+
+        return {
+          query: `(room.building = :building_${index} AND room.floor = :floor_${index})`,
+          params,
+        };
+      });
+
+      const whereClause = conditions.map((c) => c.query).join(" OR ");
+      const allParams = conditions.reduce(
+        (acc, c) => ({ ...acc, ...c.params }),
+        {}
+      );
+
+      queryBuilder.andWhere(`(${whereClause})`, allParams);
+    }
+
+    // Apply additional filters
+    if (filter.building) {
+      queryBuilder.andWhere("room.building = :building", {
+        building: filter.building,
+      });
+    }
+
+    if (filter.floor) {
+      queryBuilder.andWhere("room.floor = :floor", { floor: filter.floor });
+    }
+
+    if (filter.status) {
+      queryBuilder.andWhere("rr.status = :status", { status: filter.status });
+    }
+
+    if (filter.errorType) {
+      queryBuilder.andWhere("rr.errorType = :errorType", {
+        errorType: filter.errorType,
+      });
+    }
+
+    if (filter.search) {
+      queryBuilder.andWhere(
+        "(rr.requestCode LIKE :search OR rr.issueDescription LIKE :search)",
+        { search: `%${filter.search}%` }
+      );
+    }
+
+    // Sorting - ưu tiên theo ngày tạo (mới nhất trước)
+    queryBuilder.orderBy("rr.createdAt", "DESC");
+
+    // Pagination
+    const page = filter.page || 1;
+    const limit = filter.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items: items.map((item) =>
+        plainToInstance(RepairRequestResponseDto, item)
+      ),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Kỹ thuật viên tự nhận và bắt đầu xử lý yêu cầu
    * @param id - ID yêu cầu sửa chữa
-   * @param assignDto - Thông tin phân công
-   * @param currentUser - Người phân công
+   * @param startDto - Thông tin bắt đầu xử lý
+   * @param currentUser - Kỹ thuật viên
    * @returns RepairRequestResponseDto
    */
-  async assignTechnician(
+  async startProcessing(
     id: string,
-    assignDto: AssignTechnicianDto,
+    startDto: StartProcessingDto,
     currentUser: User
   ): Promise<RepairRequestResponseDto> {
+    // Tìm yêu cầu với thông tin asset và room
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
+      relations: ["computerAsset", "computerAsset.currentRoom"],
     });
 
     if (!repairRequest) {
@@ -432,38 +725,69 @@ export class RepairsService {
 
     if (repairRequest.status !== RepairStatus.ĐÃ_TIẾP_NHẬN) {
       throw new BadRequestException(
-        "Chỉ có thể phân công kỹ thuật viên khi yêu cầu đã được tiếp nhận"
+        "Chỉ có thể bắt đầu xử lý yêu cầu đã được tiếp nhận"
       );
     }
 
-    // Kiểm tra quyền phân công (admin hoặc trưởng nhóm)
-    if (!this.canUserAssignTechnician(currentUser)) {
-      throw new ForbiddenException(
-        "Bạn không có quyền phân công kỹ thuật viên"
-      );
+    // Kiểm tra quyền
+    const isTechnician = this.isUserTechnician(currentUser);
+    const isAdmin = this.isAdmin(currentUser);
+
+    if (!isTechnician && !isAdmin) {
+      throw new ForbiddenException("Bạn không có quyền xử lý yêu cầu này");
     }
 
-    // Kiểm tra kỹ thuật viên có tồn tại không
-    const technician = await this.userRepository.findOne({
-      where: { id: assignDto.technicianId },
+    // Nếu là kỹ thuật viên thường, kiểm tra yêu cầu có thuộc tầng được phân công không
+    if (isTechnician && !isAdmin) {
+      const room = repairRequest.computerAsset?.currentRoom;
+      if (!room) {
+        throw new BadRequestException("Không thể xác định vị trí của tài sản");
+      }
+
+      const assignments = await this.technicianAssignmentRepository.find({
+        where: { technicianId: currentUser.id },
+      });
+
+      const isAssignedToFloor = assignments.some(
+        (a) => a.building === room.building && a.floor === room.floor
+      );
+
+      if (!isAssignedToFloor) {
+        const assignedFloors = assignments
+          .map((a) => `${a.building}-${a.floor}`)
+          .join(", ");
+        throw new ForbiddenException(
+          `Yêu cầu này không nằm trong tầng mà bạn được phân công (${assignedFloors || "Chưa có phân công"})`
+        );
+      }
+    }
+
+    // Kiểm tra kỹ thuật viên có đang quá tải không
+    const ongoingRequestsCount = await this.repairRequestRepository.count({
+      where: {
+        assignedTechnicianId: currentUser.id,
+        status: RepairStatus.ĐANG_XỬ_LÝ,
+      },
     });
 
-    if (!technician) {
-      throw new NotFoundException(
-        `Không tìm thấy kỹ thuật viên với ID: ${assignDto.technicianId}`
-      );
-    }
-
-    // Kiểm tra kỹ thuật viên có role phù hợp không
-    if (!this.isUserTechnician(technician)) {
+    const MAX_CONCURRENT_REQUESTS = 5;
+    if (ongoingRequestsCount >= MAX_CONCURRENT_REQUESTS) {
       throw new BadRequestException(
-        "Người dùng được chọn không phải là kỹ thuật viên"
+        `Bạn đang xử lý quá nhiều yêu cầu cùng lúc (${ongoingRequestsCount}/${MAX_CONCURRENT_REQUESTS})`
       );
     }
 
-    repairRequest.assignedTechnicianId = assignDto.technicianId;
-    if (assignDto.assignmentNotes) {
-      repairRequest.resolutionNotes = assignDto.assignmentNotes;
+    // Tự động gán và bắt đầu xử lý
+    repairRequest.assignedTechnicianId = currentUser.id;
+    repairRequest.status = RepairStatus.ĐANG_XỬ_LÝ;
+    repairRequest.resolutionNotes = startDto.processingNotes;
+
+    if (startDto.estimatedTime) {
+      const estimatedCompletionTime = new Date();
+      estimatedCompletionTime.setMinutes(
+        estimatedCompletionTime.getMinutes() + startDto.estimatedTime
+      );
+      // Note: Cần thêm field estimatedCompletionTime vào entity nếu chưa có
     }
 
     await this.repairRequestRepository.save(repairRequest);
@@ -472,12 +796,10 @@ export class RepairsService {
   }
 
   /**
-   * Bắt đầu xử lý sửa chữa
-   * @param id - ID yêu cầu sửa chữa
-   * @param currentUser - Kỹ thuật viên
-   * @returns RepairRequestResponseDto
+   * Bắt đầu xử lý sửa chữa (deprecated - sử dụng startProcessing thay thế)
+   * @deprecated Use startProcessing instead
    */
-  async startProcessing(
+  async startProcessingOld(
     id: string,
     currentUser: User
   ): Promise<RepairRequestResponseDto> {
@@ -740,16 +1062,6 @@ export class RepairsService {
    */
   private canUserAcceptRequest(user: User): boolean {
     return this.isUserTechnician(user) || this.isAdmin(user);
-  }
-
-  /**
-   * Kiểm tra user có thể phân công kỹ thuật viên không
-   * @param user - User
-   * @returns boolean
-   */
-  private canUserAssignTechnician(user: User): boolean {
-    // TODO: Implement role check for team lead or admin
-    return this.isAdmin(user);
   }
 
   /**
