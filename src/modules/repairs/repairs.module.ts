@@ -9,6 +9,8 @@ import { ComputerComponent } from "src/entities/computer-component.entity";
 import { Computer } from "src/entities/computer.entity";
 import { AssetSoftware } from "src/entities/asset-software.entity";
 import { Software } from "src/entities/software.entity";
+import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
+import { Room } from "src/entities/room.entity";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { Software } from "src/entities/software.entity";
       Computer,
       AssetSoftware,
       Software,
+      TechnicianAssignment,
+      Room,
     ]),
   ],
   controllers: [RepairsController],
