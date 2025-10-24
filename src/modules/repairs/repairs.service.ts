@@ -22,6 +22,7 @@ import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
 import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
+import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
 import { RepairStatus } from "src/common/shared/RepairStatus";
 import { AssetStatus } from "src/common/shared/AssetStatus";
 import { ErrorType } from "src/common/shared/ErrorType";
@@ -116,6 +117,52 @@ export class RepairsService {
         );
         throw new BadRequestException(
           `Không tìm thấy các component với ID: ${notFoundIds.join(", ")}`
+        );
+      }
+
+      // 5.2. Kiểm tra các component có đang trong repair request chưa hoàn thành không
+      const componentsInActiveRepairs = await this.repairRequestRepository
+        .createQueryBuilder('rr')
+        .innerJoin('repair_request_components', 'rrc', 'rr.id = rrc.repairRequestId')
+        .where('rrc.componentId IN (:...componentIds)', { componentIds: createDto.componentIds })
+        .andWhere('rr.status NOT IN (:...completedStatuses)', {
+          completedStatuses: [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.ĐÃ_HỦY],
+        })
+        .select([
+          'rr.id',
+          'rr.requestCode',
+          'rr.status',
+          'rrc.componentId as componentId'
+        ])
+        .getRawMany();
+
+      if (componentsInActiveRepairs.length > 0) {
+        // Group components by repair request để hiển thị thông tin rõ ràng
+        const requestMap = new Map<string, { code: string; status: string; components: string[] }>();
+        
+        for (const item of componentsInActiveRepairs) {
+          const key = item.rr_id;
+          if (!requestMap.has(key)) {
+            requestMap.set(key, {
+              code: item.rr_requestCode,
+              status: item.rr_status,
+              components: []
+            });
+          }
+          
+          const component = components.find(c => c.id === item.componentId);
+          if (component) {
+            requestMap.get(key)!.components.push(component.name);
+          }
+        }
+
+        // Tạo error message chi tiết
+        const errorDetails = Array.from(requestMap.values())
+          .map(req => `${req.code} (${req.status}): ${req.components.join(', ')}`)
+          .join('\n  - ');
+
+        throw new ConflictException(
+          `Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - ${errorDetails}\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.`
         );
       }
     }
@@ -451,6 +498,26 @@ export class RepairsService {
   }
 
   /**
+   * Lấy danh sách yêu cầu theo kỹ thuật viên
+   * @param technicianId - ID kỹ thuật viên
+   * @returns Danh sách yêu cầu sửa chữa
+   */
+  async findByTechnician(technicianId: string): Promise<RepairRequestResponseDto[]> {
+    const repairRequests = await this.repairRequestRepository.find({
+      where: { assignedTechnicianId: technicianId },
+      relations: [
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
+        "components",
+      ],
+    });
+
+    return repairRequests.map((request) => this.transformToResponseDto(request));
+  }
+
+  /**
    * Tiếp nhận yêu cầu sửa chữa
    * @param id - ID yêu cầu sửa chữa
    * @param currentUser - Người tiếp nhận
@@ -618,117 +685,6 @@ export class RepairsService {
     };
   }
 
-  /**
-   * Lấy danh sách yêu cầu theo tầng
-   * @param filter - Filter parameters
-   * @param user - User hiện tại
-   * @returns Danh sách yêu cầu
-   */
-  async findByFloor(
-    filter: RepairRequestFilterDto & { building?: string; floor?: string },
-    user: User
-  ) {
-    const isTechnician = this.isUserTechnician(user);
-    const isAdmin = this.isAdmin(user);
-
-    if (!isTechnician && !isAdmin) {
-      throw new ForbiddenException("Bạn không có quyền xem yêu cầu sửa chữa");
-    }
-
-    // Build base query
-    const queryBuilder = this.repairRequestRepository
-      .createQueryBuilder("rr")
-      .leftJoinAndSelect("rr.computerAsset", "asset")
-      .leftJoinAndSelect("asset.currentRoom", "room")
-      .leftJoinAndSelect("room.unit", "unit")
-      .leftJoinAndSelect("rr.reportedByUser", "reporter")
-      .leftJoinAndSelect("rr.assignedTechnician", "technician");
-
-    // Nếu là kỹ thuật viên thường, chỉ xem yêu cầu trong tầng được phân công
-    if (isTechnician && !isAdmin) {
-      const assignments = await this.technicianAssignmentRepository.find({
-        where: { technicianId: user.id },
-      });
-
-      if (assignments.length === 0) {
-        return {
-          items: [],
-          total: 0,
-        };
-      }
-
-      // Build OR conditions for each assignment
-      const conditions = assignments.map((assignment, index) => {
-        const params: any = {};
-        params[`building_${index}`] = assignment.building;
-        params[`floor_${index}`] = assignment.floor;
-
-        return {
-          query: `(room.building = :building_${index} AND room.floor = :floor_${index})`,
-          params,
-        };
-      });
-
-      const whereClause = conditions.map((c) => c.query).join(" OR ");
-      const allParams = conditions.reduce(
-        (acc, c) => ({ ...acc, ...c.params }),
-        {}
-      );
-
-      queryBuilder.andWhere(`(${whereClause})`, allParams);
-    }
-
-    // Apply additional filters
-    if (filter.building) {
-      queryBuilder.andWhere("room.building = :building", {
-        building: filter.building,
-      });
-    }
-
-    if (filter.floor) {
-      queryBuilder.andWhere("room.floor = :floor", { floor: filter.floor });
-    }
-
-    if (filter.status) {
-      queryBuilder.andWhere("rr.status = :status", { status: filter.status });
-    }
-
-    if (filter.errorType) {
-      queryBuilder.andWhere("rr.errorType = :errorType", {
-        errorType: filter.errorType,
-      });
-    }
-
-    if (filter.search) {
-      queryBuilder.andWhere(
-        "(rr.requestCode LIKE :search OR rr.issueDescription LIKE :search)",
-        { search: `%${filter.search}%` }
-      );
-    }
-
-    // Sorting - ưu tiên theo ngày tạo (mới nhất trước)
-    queryBuilder.orderBy("rr.createdAt", "DESC");
-
-    // Pagination
-    const page = filter.page || 1;
-    const limit = filter.limit || 20;
-    const skip = (page - 1) * limit;
-
-    const [items, total] = await queryBuilder
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
-
-    return {
-      items: items.map((item) =>
-        plainToInstance(RepairRequestResponseDto, item)
-      ),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
 
   /**
    * Kỹ thuật viên tự nhận và bắt đầu xử lý yêu cầu
@@ -1308,5 +1264,137 @@ export class RepairsService {
       .getMany();
 
     return assignments.map((a) => a.technician);
+  }
+
+  /**
+   * Ghi nhận và xử lý lỗi trực tiếp tại hiện trường
+   * Endpoint cho kỹ thuật viên để tạo repair request VÀ cập nhật kết quả xử lý trong 1 lần
+   * 
+   * @param createDto - Dữ liệu tạo và xử lý repair request
+   * @param currentUser - Kỹ thuật viên đang xử lý
+   * @returns RepairRequestResponseDto
+   */
+  async createAndProcess(
+    createDto: CreateAndProcessRepairRequestDto,
+    currentUser: User,
+  ): Promise<RepairRequestResponseDto> {
+    // Validate business logic nếu có finalStatus
+    if (createDto.finalStatus) {
+      this.validateCreateAndProcess(createDto);
+    }
+
+    // 1. Tạo repair request sử dụng logic create() hiện tại
+    const repairRequest = await this.create(createDto, currentUser);
+
+    // 2. Nếu có finalStatus và resolutionNotes → Cập nhật kết quả xử lý ngay
+    if (createDto.finalStatus && createDto.resolutionNotes) {
+      // Use transaction để đảm bảo atomic
+      const queryRunner = this.repairRequestRepository.manager.connection.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // 2.1. Update repair request với kết quả xử lý
+        const requestToUpdate = await queryRunner.manager.findOne(RepairRequest, {
+          where: { id: repairRequest.id },
+          relations: ['computerAsset'],
+        });
+
+        if (!requestToUpdate) {
+          throw new NotFoundException('Không tìm thấy repair request vừa tạo');
+        }
+
+        requestToUpdate.status = createDto.finalStatus;
+        requestToUpdate.resolutionNotes = createDto.resolutionNotes;
+
+        // 2.2. Nếu status = ĐÃ_HOÀN_THÀNH → Set completedAt và update asset status
+        if (createDto.finalStatus === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+          requestToUpdate.completedAt = new Date();
+
+          // Update asset status từ DAMAGED → IN_USE
+          const asset = requestToUpdate.computerAsset;
+          if (asset && asset.status === AssetStatus.DAMAGED) {
+            asset.status = AssetStatus.IN_USE;
+            await queryRunner.manager.save(asset);
+          }
+        }
+
+        // 2.3. Save repair request
+        await queryRunner.manager.save(requestToUpdate);
+
+        await queryRunner.commitTransaction();
+
+        console.log(
+          `✅ Đã xử lý repair request ${repairRequest.requestCode} với status: ${createDto.finalStatus}`
+        );
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        console.error('Lỗi khi cập nhật kết quả xử lý:', error);
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    }
+
+    // 3. Return full data với relations
+    return this.findOne(repairRequest.id);
+  }
+
+  /**
+   * Validate business logic cho createAndProcess
+   * @param dto - CreateAndProcessRepairRequestDto
+   * @throws BadRequestException nếu dữ liệu không hợp lệ
+   */
+  private validateCreateAndProcess(
+    dto: CreateAndProcessRepairRequestDto,
+  ): void {
+    // 1. Validate: Nếu có finalStatus thì bắt buộc phải có resolutionNotes
+    if (dto.finalStatus && !dto.resolutionNotes) {
+      throw new BadRequestException(
+        'Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng'
+      );
+    }
+
+    // 2. Validate: CHỜ_THAY_THẾ chỉ áp dụng cho lỗi phần cứng
+    if (dto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
+      if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
+        throw new BadRequestException(
+          'Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). ' +
+          'Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.'
+        );
+      }
+
+      // Bắt buộc phải có componentIds khi CHỜ_THAY_THẾ
+      if (!dto.componentIds || dto.componentIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ'
+        );
+      }
+    }
+
+    // 3. Validate: Lỗi phần mềm phải có softwareIds
+    if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
+      if (!dto.softwareIds || dto.softwareIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM'
+        );
+      }
+
+      // Lỗi phần mềm chỉ có thể có status ĐÃ_HOÀN_THÀNH
+      if (dto.finalStatus && dto.finalStatus !== RepairStatus.ĐÃ_HOÀN_THÀNH) {
+        throw new BadRequestException(
+          'Lỗi phần mềm (MAY_HU_PHAN_MEM) chỉ có thể có trạng thái cuối cùng là ĐÃ_HOÀN_THÀNH'
+        );
+      }
+    }
+
+    // 4. Validate: Lỗi phần cứng phải có componentIds
+    if (dto.errorType && dto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
+      if (!dto.componentIds || dto.componentIds.length === 0) {
+        throw new BadRequestException(
+          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi xử lý lỗi phần cứng'
+        );
+      }
+    }
   }
 }
