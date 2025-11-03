@@ -122,35 +122,44 @@ export class RepairsService {
 
       // 5.2. Kiểm tra các component có đang trong repair request chưa hoàn thành không
       const componentsInActiveRepairs = await this.repairRequestRepository
-        .createQueryBuilder('rr')
-        .innerJoin('repair_request_components', 'rrc', 'rr.id = rrc.repairRequestId')
-        .where('rrc.componentId IN (:...componentIds)', { componentIds: createDto.componentIds })
-        .andWhere('rr.status NOT IN (:...completedStatuses)', {
+        .createQueryBuilder("rr")
+        .innerJoin(
+          "repair_request_components",
+          "rrc",
+          "rr.id = rrc.repairRequestId"
+        )
+        .where("rrc.componentId IN (:...componentIds)", {
+          componentIds: createDto.componentIds,
+        })
+        .andWhere("rr.status NOT IN (:...completedStatuses)", {
           completedStatuses: [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.ĐÃ_HỦY],
         })
         .select([
-          'rr.id',
-          'rr.requestCode',
-          'rr.status',
-          'rrc.componentId as componentId'
+          "rr.id",
+          "rr.requestCode",
+          "rr.status",
+          "rrc.componentId as componentId",
         ])
         .getRawMany();
 
       if (componentsInActiveRepairs.length > 0) {
         // Group components by repair request để hiển thị thông tin rõ ràng
-        const requestMap = new Map<string, { code: string; status: string; components: string[] }>();
-        
+        const requestMap = new Map<
+          string,
+          { code: string; status: string; components: string[] }
+        >();
+
         for (const item of componentsInActiveRepairs) {
           const key = item.rr_id;
           if (!requestMap.has(key)) {
             requestMap.set(key, {
               code: item.rr_requestCode,
               status: item.rr_status,
-              components: []
+              components: [],
             });
           }
-          
-          const component = components.find(c => c.id === item.componentId);
+
+          const component = components.find((c) => c.id === item.componentId);
           if (component) {
             requestMap.get(key)!.components.push(component.name);
           }
@@ -158,8 +167,10 @@ export class RepairsService {
 
         // Tạo error message chi tiết
         const errorDetails = Array.from(requestMap.values())
-          .map(req => `${req.code} (${req.status}): ${req.components.join(', ')}`)
-          .join('\n  - ');
+          .map(
+            (req) => `${req.code} (${req.status}): ${req.components.join(", ")}`
+          )
+          .join("\n  - ");
 
         throw new ConflictException(
           `Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - ${errorDetails}\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.`
@@ -497,7 +508,9 @@ export class RepairsService {
    * @param technicianId - ID kỹ thuật viên
    * @returns Danh sách yêu cầu sửa chữa
    */
-  async findByTechnician(technicianId: string): Promise<RepairRequestResponseDto[]> {
+  async findByTechnician(
+    technicianId: string
+  ): Promise<RepairRequestResponseDto[]> {
     const repairRequests = await this.repairRequestRepository.find({
       where: { assignedTechnicianId: technicianId },
       relations: [
@@ -509,7 +522,9 @@ export class RepairsService {
       ],
     });
 
-    return repairRequests.map((request) => this.transformToResponseDto(request));
+    return repairRequests.map((request) =>
+      this.transformToResponseDto(request)
+    );
   }
 
   /**
@@ -679,7 +694,6 @@ export class RepairsService {
       waitingReplacementRequests,
     };
   }
-
 
   /**
    * Kỹ thuật viên tự nhận và bắt đầu xử lý yêu cầu
@@ -1173,10 +1187,9 @@ export class RepairsService {
         .leftJoinAndSelect("assignment.technician", "technician")
         .leftJoinAndSelect("technician.roles", "roles")
         .where("assignment.building = :building", { building })
-        .andWhere(
-          "(assignment.floor = :floor OR assignment.floor IS NULL)",
-          { floor }
-        )
+        .andWhere("(assignment.floor = :floor OR assignment.floor IS NULL)", {
+          floor,
+        })
         .andWhere("technician.deletedAt IS NULL")
         .getMany();
 
@@ -1251,10 +1264,9 @@ export class RepairsService {
       .leftJoinAndSelect("assignment.technician", "technician")
       .leftJoinAndSelect("technician.roles", "roles")
       .where("assignment.building = :building", { building: room.building })
-      .andWhere(
-        "(assignment.floor = :floor OR assignment.floor IS NULL)",
-        { floor: room.floor }
-      )
+      .andWhere("(assignment.floor = :floor OR assignment.floor IS NULL)", {
+        floor: room.floor,
+      })
       .andWhere("technician.deletedAt IS NULL")
       .getMany();
 
@@ -1264,14 +1276,14 @@ export class RepairsService {
   /**
    * Ghi nhận và xử lý lỗi trực tiếp tại hiện trường
    * Endpoint cho kỹ thuật viên để tạo repair request VÀ cập nhật kết quả xử lý trong 1 lần
-   * 
+   *
    * @param createDto - Dữ liệu tạo và xử lý repair request
    * @param currentUser - Kỹ thuật viên đang xử lý
    * @returns RepairRequestResponseDto
    */
   async createAndProcess(
     createDto: CreateAndProcessRepairRequestDto,
-    currentUser: User,
+    currentUser: User
   ): Promise<RepairRequestResponseDto> {
     // Validate business logic nếu có finalStatus
     if (createDto.finalStatus) {
@@ -1284,19 +1296,23 @@ export class RepairsService {
     // 2. Nếu có finalStatus và resolutionNotes → Cập nhật kết quả xử lý ngay
     if (createDto.finalStatus && createDto.resolutionNotes) {
       // Use transaction để đảm bảo atomic
-      const queryRunner = this.repairRequestRepository.manager.connection.createQueryRunner();
+      const queryRunner =
+        this.repairRequestRepository.manager.connection.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
       try {
         // 2.1. Update repair request với kết quả xử lý
-        const requestToUpdate = await queryRunner.manager.findOne(RepairRequest, {
-          where: { id: repairRequest.id },
-          relations: ['computerAsset'],
-        });
+        const requestToUpdate = await queryRunner.manager.findOne(
+          RepairRequest,
+          {
+            where: { id: repairRequest.id },
+            relations: ["computerAsset"],
+          }
+        );
 
         if (!requestToUpdate) {
-          throw new NotFoundException('Không tìm thấy repair request vừa tạo');
+          throw new NotFoundException("Không tìm thấy repair request vừa tạo");
         }
 
         requestToUpdate.status = createDto.finalStatus;
@@ -1324,7 +1340,7 @@ export class RepairsService {
         );
       } catch (error) {
         await queryRunner.rollbackTransaction();
-        console.error('Lỗi khi cập nhật kết quả xử lý:', error);
+        console.error("Lỗi khi cập nhật kết quả xử lý:", error);
         throw error;
       } finally {
         await queryRunner.release();
@@ -1341,12 +1357,12 @@ export class RepairsService {
    * @throws BadRequestException nếu dữ liệu không hợp lệ
    */
   private validateCreateAndProcess(
-    dto: CreateAndProcessRepairRequestDto,
+    dto: CreateAndProcessRepairRequestDto
   ): void {
     // 1. Validate: Nếu có finalStatus thì bắt buộc phải có resolutionNotes
     if (dto.finalStatus && !dto.resolutionNotes) {
       throw new BadRequestException(
-        'Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng'
+        "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng"
       );
     }
 
@@ -1354,15 +1370,15 @@ export class RepairsService {
     if (dto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
       if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
         throw new BadRequestException(
-          'Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). ' +
-          'Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.'
+          "Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). " +
+            "Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH."
         );
       }
 
       // Bắt buộc phải có componentIds khi CHỜ_THAY_THẾ
       if (!dto.componentIds || dto.componentIds.length === 0) {
         throw new BadRequestException(
-          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ'
+          "Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ"
         );
       }
     }
@@ -1371,14 +1387,14 @@ export class RepairsService {
     if (dto.errorType === ErrorType.MAY_HU_PHAN_MEM) {
       if (!dto.softwareIds || dto.softwareIds.length === 0) {
         throw new BadRequestException(
-          'Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM'
+          "Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM"
         );
       }
 
       // Lỗi phần mềm chỉ có thể có status ĐÃ_HOÀN_THÀNH
       if (dto.finalStatus && dto.finalStatus !== RepairStatus.ĐÃ_HOÀN_THÀNH) {
         throw new BadRequestException(
-          'Lỗi phần mềm (MAY_HU_PHAN_MEM) chỉ có thể có trạng thái cuối cùng là ĐÃ_HOÀN_THÀNH'
+          "Lỗi phần mềm (MAY_HU_PHAN_MEM) chỉ có thể có trạng thái cuối cùng là ĐÃ_HOÀN_THÀNH"
         );
       }
     }
@@ -1387,7 +1403,7 @@ export class RepairsService {
     if (dto.errorType && dto.errorType !== ErrorType.MAY_HU_PHAN_MEM) {
       if (!dto.componentIds || dto.componentIds.length === 0) {
         throw new BadRequestException(
-          'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi xử lý lỗi phần cứng'
+          "Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi xử lý lỗi phần cứng"
         );
       }
     }
