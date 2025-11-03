@@ -284,6 +284,19 @@ export class UsersService {
       }));
     }
 
+    // Chuyển đổi unit nếu có
+    if (user.unit) {
+      dto.unit = {
+        id: user.unit.id,
+        name: user.unit.name,
+        type: user.unit.type,
+      };
+    }
+
+    // Map createdAt và updatedAt
+    dto.createdAt = user.createdAt;
+    dto.updatedAt = user.updatedAt;
+
     return dto;
   }
 }
