@@ -341,13 +341,8 @@ export class RepairsService {
       } as any;
     }
 
-    if (request.errorType) {
-      dto.errorType = {
-        id: request.errorType,
-        name: request.errorType,
-        description: request.errorType,
-      } as any;
-    }
+    // errorType là enum, giữ nguyên giá trị string
+    // Không cần transform thành object
 
     if (request.components && request.components.length > 0) {
       dto.components = request.components.map((component) => ({
