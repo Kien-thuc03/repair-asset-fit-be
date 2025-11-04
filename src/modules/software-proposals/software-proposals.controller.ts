@@ -386,4 +386,91 @@ export class SoftwareProposalsController {
   ): Promise<SoftwareProposalResponseDto> {
     return this.softwareProposalsService.update(id, updateDto, user);
   }
+
+  @Get("proposals/proposers/:proposerId")
+  @ApiOperation({
+    summary: "Lấy danh sách đề xuất phần mềm theo người đề xuất",
+    description: `
+      Lấy danh sách tất cả đề xuất phần mềm do một người dùng cụ thể tạo ra.
+      
+      **Sử dụng khi:**
+      - Người dùng muốn xem lịch sử các đề xuất phần mềm của mình
+      - Quản trị viên muốn theo dõi đề xuất của một người dùng cụ thể
+      - Thống kê số lượng đề xuất theo người đề xuất
+      
+      **Thông tin trả về:**
+      - Danh sách đầy đủ các đề xuất phần mềm
+      - Bao gồm thông tin phòng, danh sách phần mềm và trạng thái
+      - Sắp xếp theo thời gian tạo mới nhất
+    `,
+  })
+  @ApiParam({
+    name: "proposerId",
+    description: "ID của người đề xuất",
+    format: "uuid",
+    example: "47d9013d-6c7e-48d2-8443-6300632ed811",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách đề xuất phần mềm thành công",
+    type: [SoftwareProposalResponseDto],
+    schema: {
+      example: [
+        {
+          id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          proposalCode: "DXPM-2025-0001",
+          proposerId: "47d9013d-6c7e-48d2-8443-6300632ed811",
+          proposer: {
+            id: "47d9013d-6c7e-48d2-8443-6300632ed811",
+            fullName: "Nguyễn Văn A",
+            email: "nguyenvana@fit.hcmuaf.edu.vn",
+            unitName: "Khoa CNTT",
+          },
+          roomId: "room-123",
+          room: {
+            id: "room-123",
+            name: "Phòng 4A01.01",
+            building: "A",
+            floor: "1",
+            roomNumber: "4A01.01",
+          },
+          reason: "Phòng máy tính cần Microsoft Office để phục vụ giảng dạy",
+          status: "CHỜ_DUYỆT",
+          items: [
+            {
+              id: "item-1",
+              softwareName: "Microsoft Office 2021 Professional Plus",
+              version: "2021",
+              publisher: "Microsoft Corporation",
+              quantity: 30,
+              licenseType: "Vĩnh viễn",
+            },
+          ],
+          createdAt: "2025-11-04T10:00:00Z",
+          updatedAt: "2025-11-04T10:00:00Z",
+        },
+      ],
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy người dùng hoặc không có đề xuất nào",
+    schema: {
+      example: {
+        statusCode: 404,
+        message:
+          "Không tìm thấy người dùng với ID: 47d9013d-6c7e-48d2-8443-6300632ed811",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getProposalsByProposer(
+    @Param("proposerId", ParseUUIDPipe) proposerId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    return this.softwareProposalsService.findByProposer(proposerId);
+  }
 }

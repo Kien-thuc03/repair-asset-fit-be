@@ -155,6 +155,25 @@ export class SoftwareProposalsService {
   }
 
   /**
+   * Lấy danh sách đề xuất phần mềm theo người đề xuất
+   * @param proposerId - ID người đề xuất
+   * @returns Danh sách SoftwareProposalResponseDto
+   */
+  async findByProposer(
+    proposerId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    const proposals = await this.softwareProposalRepository.find({
+      where: { proposerId },
+      relations: ["proposer", "approver", "room", "room.unit", "items"],
+      order: {
+        createdAt: "DESC",
+      },
+    });
+
+    return proposals.map((proposal) => this.transformToResponseDto(proposal));
+  }
+
+  /**
    * Cập nhật thông tin đề xuất phần mềm
    * @param id - ID đề xuất
    * @param updateDto - Dữ liệu cập nhật

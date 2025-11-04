@@ -520,6 +520,47 @@ export class RepairsService {
         "assignedTechnician",
         "components",
       ],
+      order: {
+        createdAt: "DESC",
+      },
+    });
+
+    return repairRequests.map((request) =>
+      this.transformToResponseDto(request)
+    );
+  }
+
+  /**
+   * Lấy danh sách yêu cầu theo người báo lỗi
+   * @param reporterId - ID người báo lỗi
+   * @returns Danh sách yêu cầu sửa chữa
+   */
+  async findByReporter(
+    reporterId: string
+  ): Promise<RepairRequestResponseDto[]> {
+    // Kiểm tra người dùng có tồn tại không
+    const reporter = await this.userRepository.findOne({
+      where: { id: reporterId },
+    });
+
+    if (!reporter) {
+      throw new NotFoundException(
+        `Không tìm thấy người dùng với ID: ${reporterId}`
+      );
+    }
+
+    const repairRequests = await this.repairRequestRepository.find({
+      where: { reporterId: reporterId },
+      relations: [
+        "computerAsset",
+        "computerAsset.currentRoom",
+        "reporter",
+        "assignedTechnician",
+        "components",
+      ],
+      order: {
+        createdAt: "DESC",
+      },
     });
 
     return repairRequests.map((request) =>
