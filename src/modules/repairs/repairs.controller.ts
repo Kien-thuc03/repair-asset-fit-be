@@ -109,10 +109,10 @@ export class RepairsController {
     return this.repairsService.create(createRepairRequestDto, user);
   }
 
-  @Post('process-onsite')
+  @Post("process-onsite")
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Ghi nhận và xử lý lỗi trực tiếp tại hiện trường',
+    summary: "Ghi nhận và xử lý lỗi trực tiếp tại hiện trường",
     description: `
       Endpoint dành cho kỹ thuật viên để ghi nhận lỗi VÀ xử lý ngay tại chỗ trong một lần submit.
       
@@ -158,44 +158,48 @@ export class RepairsController {
   @ApiBody({ type: CreateAndProcessRepairRequestDto })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Ghi nhận và xử lý lỗi thành công',
+    description: "Ghi nhận và xử lý lỗi thành công",
     type: RepairRequestResponseDto,
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Dữ liệu không hợp lệ hoặc vi phạm business logic',
+    description: "Dữ liệu không hợp lệ hoặc vi phạm business logic",
     schema: {
       examples: {
         missingResolutionNotes: {
-          summary: 'Thiếu ghi chú xử lý',
+          summary: "Thiếu ghi chú xử lý",
           value: {
             statusCode: 400,
-            message: 'Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng',
-            error: 'Bad Request',
+            message:
+              "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng",
+            error: "Bad Request",
           },
         },
         softwareNoReplacement: {
-          summary: 'Lỗi phần mềm không thể CHỜ_THAY_THẾ',
+          summary: "Lỗi phần mềm không thể CHỜ_THAY_THẾ",
           value: {
             statusCode: 400,
-            message: 'Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.',
-            error: 'Bad Request',
+            message:
+              "Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.",
+            error: "Bad Request",
           },
         },
         replacementNoComponents: {
-          summary: 'CHỜ_THAY_THẾ thiếu componentIds',
+          summary: "CHỜ_THAY_THẾ thiếu componentIds",
           value: {
             statusCode: 400,
-            message: 'Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ',
-            error: 'Bad Request',
+            message:
+              "Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ",
+            error: "Bad Request",
           },
         },
         softwareNoSoftwareIds: {
-          summary: 'Lỗi phần mềm thiếu softwareIds',
+          summary: "Lỗi phần mềm thiếu softwareIds",
           value: {
             statusCode: 400,
-            message: 'Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM',
-            error: 'Bad Request',
+            message:
+              "Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM",
+            error: "Bad Request",
           },
         },
       },
@@ -203,26 +207,27 @@ export class RepairsController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'Component đang trong repair request khác chưa hoàn thành',
+    description: "Component đang trong repair request khác chưa hoàn thành",
     schema: {
       example: {
         statusCode: 409,
-        message: 'Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - YCSC-2025-0003 (CHỜ_TIẾP_NHẬN): intel core i3, màn hình\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.',
-        error: 'Conflict',
+        message:
+          "Không thể tạo yêu cầu sửa chữa mới vì một số component đang trong yêu cầu sửa chữa khác chưa hoàn thành:\n  - YCSC-2025-0003 (CHỜ_TIẾP_NHẬN): intel core i3, màn hình\n\nVui lòng đợi các yêu cầu này hoàn thành hoặc loại bỏ các component đang được sửa chữa khỏi yêu cầu mới.",
+        error: "Conflict",
       },
     },
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
-    description: 'Không tìm thấy asset, component hoặc software',
+    description: "Không tìm thấy asset, component hoặc software",
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'Chưa đăng nhập hoặc token không hợp lệ',
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
   })
   async createAndProcessOnsite(
     @Body() dto: CreateAndProcessRepairRequestDto,
-    @CurrentUser() user: User,
+    @CurrentUser() user: User
   ): Promise<RepairRequestResponseDto> {
     return this.repairsService.createAndProcess(dto, user);
   }
@@ -529,7 +534,6 @@ export class RepairsController {
     return this.repairsService.update(id, updateDto, user);
   }
 
-  
   @Get("rooms/:roomId/technicians")
   @ApiOperation({
     summary: "Lấy danh sách kỹ thuật viên phụ trách một phòng",
@@ -620,7 +624,6 @@ export class RepairsController {
     return this.repairsService.getTechniciansForRoom(roomId);
   }
 
-
   @Get("repair-requests/technicians/:technicianId")
   @ApiResponse({
     status: HttpStatus.OK,
@@ -638,5 +641,97 @@ export class RepairsController {
     @Param("technicianId", ParseUUIDPipe) technicianId: string
   ): Promise<RepairRequestResponseDto[]> {
     return this.repairsService.findByTechnician(technicianId);
+  }
+
+  @Get("repair-requests/reporters/:reporterId")
+  @ApiOperation({
+    summary: "Lấy danh sách yêu cầu sửa chữa theo người báo lỗi",
+    description: `
+      Lấy danh sách tất cả yêu cầu sửa chữa do một người dùng cụ thể tạo ra.
+      
+      **Sử dụng khi:**
+      - Người dùng muốn xem lịch sử các yêu cầu sửa chữa của mình
+      - Quản trị viên muốn theo dõi yêu cầu của một người dùng cụ thể
+      - Thống kê số lượng yêu cầu theo người báo lỗi
+      
+      **Thông tin trả về:**
+      - Danh sách đầy đủ các yêu cầu sửa chữa
+      - Bao gồm thông tin tài sản, phòng, kỹ thuật viên và trạng thái
+      - Sắp xếp theo thời gian tạo mới nhất
+    `,
+  })
+  @ApiParam({
+    name: "reporterId",
+    description: "ID của người báo lỗi",
+    format: "uuid",
+    example: "47d9013d-6c7e-48d2-8443-6300632ed811",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách yêu cầu sửa chữa thành công",
+    type: [RepairRequestResponseDto],
+    schema: {
+      example: [
+        {
+          id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          requestCode: "YCSC-2025-0001",
+          computerAssetId: "asset-123",
+          computerAsset: {
+            id: "asset-123",
+            ktCode: "4A01-01-PC-001",
+            name: "Máy tính phòng 4A01.01",
+            type: "DESKTOP",
+            status: "DAMAGED",
+          },
+          room: {
+            id: "room-123",
+            name: "Phòng 4A01.01",
+            building: "A",
+            floor: "1",
+            roomNumber: "4A01.01",
+          },
+          reporterId: "47d9013d-6c7e-48d2-8443-6300632ed811",
+          reporter: {
+            id: "47d9013d-6c7e-48d2-8443-6300632ed811",
+            fullName: "Nguyễn Văn A",
+            email: "nguyenvana@fit.hcmuaf.edu.vn",
+            username: "21011111",
+          },
+          description: "Máy không khởi động, không có tín hiệu màn hình",
+          errorType: "MAY_KHONG_KHOI_DONG",
+          status: "ĐANG_XỬ_LÝ",
+          assignedTechnicianId: "tech-123",
+          assignedTechnician: {
+            id: "tech-123",
+            fullName: "Trần Thị B",
+            email: "tranthib@fit.hcmuaf.edu.vn",
+            username: "21011112",
+          },
+          createdAt: "2025-11-04T10:00:00Z",
+          acceptedAt: "2025-11-04T10:30:00Z",
+        },
+      ],
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy người dùng hoặc không có yêu cầu nào",
+    schema: {
+      example: {
+        statusCode: 404,
+        message:
+          "Không tìm thấy người dùng với ID: 47d9013d-6c7e-48d2-8443-6300632ed811",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getRepairRequestsByReporter(
+    @Param("reporterId", ParseUUIDPipe) reporterId: string
+  ): Promise<RepairRequestResponseDto[]> {
+    return this.repairsService.findByReporter(reporterId);
   }
 }
