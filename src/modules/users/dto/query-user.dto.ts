@@ -38,6 +38,14 @@ export class QueryUserDto {
   unitId?: string;
 
   @ApiPropertyOptional({
+    description: 'Lọc theo ID cơ sở (campus) - sẽ lấy tất cả người dùng thuộc các đơn vị con của cơ sở này',
+    example: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'ID cơ sở phải là UUID hợp lệ' })
+  campusId?: string;
+
+  @ApiPropertyOptional({
     description: 'Lọc theo ID vai trò',
     example: 'uuid',
   })

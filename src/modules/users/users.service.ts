@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, In } from 'typeorm';
 import { User } from '../../entities/user.entity';
+import { Unit } from '../../entities/unit.entity';
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -22,6 +23,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Unit)
+    private readonly unitRepository: Repository<Unit>,
   ) {}
 
   /**
@@ -38,6 +41,7 @@ export class UsersService {
       search,
       status,
       unitId,
+      campusId,
       roleId,
       page = 1,
       limit = 10,
@@ -64,9 +68,22 @@ export class UsersService {
       queryBuilder.andWhere('user.status = :status', { status });
     }
 
-    // Lọc theo đơn vị
+    // Lọc theo đơn vị cụ thể
     if (unitId) {
       queryBuilder.andWhere('user.unitId = :unitId', { unitId });
+    }
+
+    // Lọc theo cơ sở (campus) - lấy tất cả users thuộc các đơn vị con
+    if (campusId) {
+      const childUnitIds = await this.getAllChildUnitIds(campusId);
+      if (childUnitIds.length > 0) {
+        queryBuilder.andWhere('user.unitId IN (:...childUnitIds)', {
+          childUnitIds,
+        });
+      } else {
+        // Nếu campus không có đơn vị con nào, vẫn check user thuộc campus
+        queryBuilder.andWhere('user.unitId = :campusId', { campusId });
+      }
     }
 
     // Lọc theo vai trò
@@ -99,6 +116,32 @@ export class UsersService {
       limit: Number(limit),
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Lấy tất cả ID của các đơn vị con (bao gồm cả các cấp con lồng nhau)
+   * @param parentUnitId ID của đơn vị cha (campus)
+   * @returns Mảng các ID của đơn vị con
+   */
+  private async getAllChildUnitIds(parentUnitId: string): Promise<string[]> {
+    const childUnitIds: string[] = [];
+    
+    // Hàm đệ quy để lấy tất cả children
+    const collectChildIds = async (unitId: string) => {
+      const children = await this.unitRepository.find({
+        where: { parentUnitId: unitId },
+        select: ['id'],
+      });
+
+      for (const child of children) {
+        childUnitIds.push(child.id);
+        // Đệ quy để lấy children của children
+        await collectChildIds(child.id);
+      }
+    };
+
+    await collectChildIds(parentUnitId);
+    return childUnitIds;
   }
 
   /**
