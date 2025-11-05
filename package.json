@@ -20,6 +20,7 @@
     "seed:components-building-h": "ts-node -r tsconfig-paths/register src/seeds/seed-computer-components-building-h.ts",
     "seed:software-building-h": "ts-node -r tsconfig-paths/register src/seeds/seed-software-building-h.ts",
     "seed:update-machine-labels": "ts-node -r tsconfig-paths/register src/seeds/update-machine-labels.ts",
+    "seed:technician-assignments-h": "ts-node -r tsconfig-paths/register src/seeds/seed-technician-assignments-building-h.ts",
     "migrate:assets": "ts-node -r tsconfig-paths/register scripts/migrate-assets.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
