@@ -20,6 +20,7 @@ export class ReplacementItemResponseDto {
       name: { type: "string" },
       componentSpecs: { type: "string" },
       status: { type: "string" },
+      roomLocation: { type: "string" },
     },
   })
   oldComponent?: {
@@ -28,6 +29,7 @@ export class ReplacementItemResponseDto {
     name: string;
     componentSpecs?: string;
     status: string;
+    roomLocation?: string;
   };
 
   @ApiProperty({ description: "Tên linh kiện/thiết bị mới" })

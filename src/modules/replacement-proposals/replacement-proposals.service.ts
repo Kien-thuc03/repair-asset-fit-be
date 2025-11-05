@@ -130,6 +130,8 @@ export class ReplacementProposalsService {
       .leftJoinAndSelect("proposal.adminVerifier", "adminVerifier")
       .leftJoinAndSelect("proposal.items", "items")
       .leftJoinAndSelect("items.oldComponent", "oldComponent")
+      .leftJoinAndSelect("oldComponent.computer", "computer")
+      .leftJoinAndSelect("computer.room", "room")
       .leftJoinAndSelect(
         "items.newlyPurchasedComponent",
         "newlyPurchasedComponent"
@@ -410,33 +412,41 @@ export class ReplacementProposalsService {
       verificationReportUrl: proposal.verificationReportUrl,
       createdAt: proposal.createdAt,
       updatedAt: proposal.updatedAt,
-      items: proposal.items?.map((item) => ({
-        id: item.id,
-        proposalId: item.proposalId,
-        oldComponentId: item.oldComponentId,
-        oldComponent: item.oldComponent
-          ? {
-              id: item.oldComponent.id,
-              componentType: item.oldComponent.componentType,
-              name: item.oldComponent.name,
-              componentSpecs: item.oldComponent.componentSpecs,
-              status: item.oldComponent.status,
-            }
-          : undefined,
-        newItemName: item.newItemName,
-        newItemSpecs: item.newItemSpecs,
-        quantity: item.quantity,
-        reason: item.reason,
-        newlyPurchasedComponentId: item.newlyPurchasedComponentId,
-        newlyPurchasedComponent: item.newlyPurchasedComponent
-          ? {
-              id: item.newlyPurchasedComponent.id,
-              componentType: item.newlyPurchasedComponent.componentType,
-              name: item.newlyPurchasedComponent.name,
-              componentSpecs: item.newlyPurchasedComponent.componentSpecs,
-            }
-          : undefined,
-      })),
+      items: proposal.items?.map((item) => {
+        const room = item.oldComponent?.computer?.room;
+        const roomLocation = room
+          ? `${room.building || ""} - ${room.roomNumber || ""}`.trim()
+          : undefined;
+
+        return {
+          id: item.id,
+          proposalId: item.proposalId,
+          oldComponentId: item.oldComponentId,
+          oldComponent: item.oldComponent
+            ? {
+                id: item.oldComponent.id,
+                componentType: item.oldComponent.componentType,
+                name: item.oldComponent.name,
+                componentSpecs: item.oldComponent.componentSpecs,
+                status: item.oldComponent.status,
+                roomLocation,
+              }
+            : undefined,
+          newItemName: item.newItemName,
+          newItemSpecs: item.newItemSpecs,
+          quantity: item.quantity,
+          reason: item.reason,
+          newlyPurchasedComponentId: item.newlyPurchasedComponentId,
+          newlyPurchasedComponent: item.newlyPurchasedComponent
+            ? {
+                id: item.newlyPurchasedComponent.id,
+                componentType: item.newlyPurchasedComponent.componentType,
+                name: item.newlyPurchasedComponent.name,
+                componentSpecs: item.newlyPurchasedComponent.componentSpecs,
+              }
+            : undefined,
+        };
+      }),
       itemsCount: proposal.items?.length || 0,
     };
   }
