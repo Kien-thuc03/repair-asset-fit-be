@@ -17,6 +17,7 @@ import { ComputerModule } from './modules/computer/computer.module';
 import { TechnicianAssignmentModule } from './modules/technician-assignment/technician-assignment.module';
 import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
 import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
+import { UploadModule } from './modules/upload/upload.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -54,6 +55,7 @@ import { SoftwareProposalsModule } from "./modules/software-proposals/software-p
     TechnicianAssignmentModule,
     AssetSoftwareModule,
     SoftwareProposalsModule,
+    UploadModule,
   ],
   providers: [
     {
