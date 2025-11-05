@@ -4,20 +4,21 @@ import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { TypeOrmAsyncConfig } from "./common/config/typeorm.config";
-import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
-import { RedisModule } from './modules/redis/redis.module';
-import { UnitsModule } from './modules/units/units.module';
-import { RoomsModule } from './modules/rooms/rooms.module';
-import { RolesModule } from './modules/roles/roles.module';
-import { PermissionsModule } from './modules/permissions/permissions.module';
-import { RepairsModule } from './modules/repairs/repairs.module';
-import { AssetsModule } from './modules/assets/assets.module';
-import { ComputerModule } from './modules/computer/computer.module';
-import { TechnicianAssignmentModule } from './modules/technician-assignment/technician-assignment.module';
+import { AuthModule } from "./modules/auth/auth.module";
+import { UsersModule } from "./modules/users/users.module";
+import { RedisModule } from "./modules/redis/redis.module";
+import { UnitsModule } from "./modules/units/units.module";
+import { RoomsModule } from "./modules/rooms/rooms.module";
+import { RolesModule } from "./modules/roles/roles.module";
+import { PermissionsModule } from "./modules/permissions/permissions.module";
+import { RepairsModule } from "./modules/repairs/repairs.module";
+import { AssetsModule } from "./modules/assets/assets.module";
+import { ComputerModule } from "./modules/computer/computer.module";
+import { TechnicianAssignmentModule } from "./modules/technician-assignment/technician-assignment.module";
 import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
 import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
 import { UploadModule } from './modules/upload/upload.module';
+import { ReplacementProposalsModule } from "./modules/replacement-proposals/replacement-proposals.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -56,6 +57,7 @@ import { UploadModule } from './modules/upload/upload.module';
     AssetSoftwareModule,
     SoftwareProposalsModule,
     UploadModule,
+    ReplacementProposalsModule,
   ],
   providers: [
     {
