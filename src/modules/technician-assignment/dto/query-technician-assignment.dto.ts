@@ -1,15 +1,14 @@
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString } from "class-validator";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class QueryTechnicianAssignmentDto {
-    @IsOptional()
-    @IsUUID('4', { message: 'ID kỹ thuật viên phải là UUID hợp lệ' })
-    technicianId?: string;
+  @IsOptional()
+  @IsString({ message: "Tên tòa nhà phải là chuỗi ký tự" })
+  @ApiPropertyOptional({ description: "Tên tòa nhà để lọc" })
+  building?: string;
 
-    @IsOptional()
-    @IsString({ message: 'Tên tòa nhà phải là chuỗi ký tự' })
-    building?: string;
-
-    @IsOptional()
-    @IsString({ message: 'Tầng phải là chuỗi ký tự' })
-    floor?: string;
+  @IsOptional()
+  @IsString({ message: "Tầng phải là chuỗi ký tự" })
+  @ApiPropertyOptional({ description: "Tầng để lọc" })
+  floor?: string;
 }
