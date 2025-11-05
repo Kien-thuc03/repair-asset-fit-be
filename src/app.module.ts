@@ -17,6 +17,7 @@ import { ComputerModule } from "./modules/computer/computer.module";
 import { TechnicianAssignmentModule } from "./modules/technician-assignment/technician-assignment.module";
 import { AssetSoftwareModule } from "./modules/asset-software/asset-software.module";
 import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
+import { UploadModule } from './modules/upload/upload.module';
 import { ReplacementProposalsModule } from "./modules/replacement-proposals/replacement-proposals.module";
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ReplacementProposalsModule } from "./modules/replacement-proposals/repl
     TechnicianAssignmentModule,
     AssetSoftwareModule,
     SoftwareProposalsModule,
+    UploadModule,
     ReplacementProposalsModule,
   ],
   providers: [
