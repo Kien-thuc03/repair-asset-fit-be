@@ -40,11 +40,44 @@ export class UploadService {
 
     try {
       return await new Promise<CloudinaryUploadResult>((resolve, reject) => {
+        // Lấy tên file gốc và extension
+        const originalName = file.originalname;
+        const lastDotIndex = originalName.lastIndexOf('.');
+        const fileNameWithoutExt = lastDotIndex > 0 
+          ? originalName.substring(0, lastDotIndex) 
+          : originalName;
+        const extension = lastDotIndex > 0 
+          ? originalName.substring(lastDotIndex + 1).toLowerCase()
+          : '';
+        
+        // Sanitize filename (loại bỏ ký tự đặc biệt, giữ dấu cách và tiếng Việt)
+        const sanitizedFileName = fileNameWithoutExt
+          .replace(/[^\w\s\u00C0-\u1EF9.-]/g, '') // Giữ chữ, số, dấu cách, tiếng Việt
+          .replace(/\s+/g, '_'); // Thay khoảng trắng bằng underscore
+
+        // Xác định resource_type dựa trên extension
+        let resourceType = options.resource_type || 'auto';
+        
+        // Nếu là document (pdf, doc, docx, xls, xlsx), dùng 'raw' để giữ nguyên định dạng
+        const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
+        if (extension && documentExtensions.includes(extension)) {
+          resourceType = 'raw';
+        }
+
         const uploadOptions = {
           folder: options.folder || 'repair-asset',
-          resource_type: options.resource_type || 'auto',
+          resource_type: resourceType,
+          public_id: sanitizedFileName, // Tên file không có extension
+          format: extension || undefined, // ✅ BẮT BUỘC: Extension của file
+          use_filename: true,
+          unique_filename: true,
           ...options,
         };
+
+        this.logger.log(`Uploading file: ${originalName}`);
+        this.logger.log(`Sanitized name: ${sanitizedFileName}`);
+        this.logger.log(`Extension: ${extension}`);
+        this.logger.log(`Resource type: ${resourceType}`);
 
         const uploadStream = cloudinary.uploader.upload_stream(
           uploadOptions as any,
@@ -54,6 +87,8 @@ export class UploadService {
               reject(error);
             } else {
               this.logger.log(`File uploaded successfully: ${result.secure_url}`);
+              this.logger.log(`Public ID: ${result.public_id}`);
+              this.logger.log(`Format: ${result.format}`);
               resolve(result as unknown as CloudinaryUploadResult);
             }
           },
