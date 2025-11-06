@@ -23,6 +23,24 @@ class AssetInfoDto {
   @Expose()
   @ApiProperty({ description: "Trạng thái tài sản" })
   status: string;
+
+  @Expose()
+  @ApiPropertyOptional({ description: "Số máy (machine label)" })
+  machineLabel?: string;
+}
+
+class UnitInfoDto {
+  @Expose()
+  @ApiProperty({ description: "ID đơn vị" })
+  id: string;
+
+  @Expose()
+  @ApiProperty({ description: "Tên đơn vị" })
+  name: string;
+
+  @Expose()
+  @ApiProperty({ description: "Mã đơn vị" })
+  code: string;
 }
 
 class RoomInfoDto {
@@ -45,6 +63,25 @@ class RoomInfoDto {
   @Expose()
   @ApiProperty({ description: "Số phòng" })
   roomNumber: string;
+
+  @Expose()
+  @Type(() => UnitInfoDto)
+  @ApiPropertyOptional({ description: "Thông tin đơn vị", type: UnitInfoDto })
+  unit?: UnitInfoDto;
+}
+
+class RoleInfoDto {
+  @Expose()
+  @ApiProperty({ description: "ID vai trò" })
+  id: string;
+
+  @Expose()
+  @ApiProperty({ description: "Tên vai trò" })
+  name: string;
+
+  @Expose()
+  @ApiProperty({ description: "Mã vai trò" })
+  code: string;
 }
 
 class UserInfoDto {
@@ -63,6 +100,11 @@ class UserInfoDto {
   @Expose()
   @ApiProperty({ description: "Tên đăng nhập" })
   username: string;
+
+  @Expose()
+  @Type(() => RoleInfoDto)
+  @ApiPropertyOptional({ description: "Danh sách vai trò", type: [RoleInfoDto] })
+  roles?: RoleInfoDto[];
 }
 
 class ComponentInfoDto {
