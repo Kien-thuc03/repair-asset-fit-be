@@ -256,6 +256,10 @@ export class ReplacementProposalsService {
   /**
    * Cập nhật trạng thái đề xuất thay thế
    */
+  /**
+   * Cập nhật trạng thái đề xuất thay thế
+   * ⚠️ Quan trọng: Khi status = ĐÃ_DUYỆT, tất cả repair requests liên quan sẽ được cập nhật thành CHỜ_THAY_THẾ
+   */
   async updateStatus(
     id: string,
     updateDto: UpdateReplacementProposalStatusDto,
@@ -263,7 +267,14 @@ export class ReplacementProposalsService {
   ): Promise<ReplacementProposalResponseDto> {
     const proposal = await this.replacementProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "teamLeadApprover", "adminVerifier"],
+      relations: [
+        "proposer",
+        "teamLeadApprover",
+        "adminVerifier",
+        "items",
+        "items.oldComponent",
+        "items.oldComponent.repairRequests",
+      ],
     });
 
     if (!proposal) {
@@ -306,7 +317,53 @@ export class ReplacementProposalsService {
 
     await this.replacementProposalRepository.save(proposal);
 
+    // 🔥 MỚI: Khi proposal được duyệt (ĐÃ_DUYỆT) → Cập nhật tất cả repair requests liên quan thành CHỜ_THAY_THẾ
+    if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT) {
+      await this.updateRelatedRepairRequests(proposal);
+    }
+
     return this.findOne(id);
+  }
+
+  /**
+   * Cập nhật tất cả repair requests liên quan khi proposal được duyệt
+   * @param proposal - Replacement proposal vừa được duyệt (đã load items.oldComponent.repairRequests)
+   */
+  private async updateRelatedRepairRequests(
+    proposal: ReplacementProposal
+  ): Promise<void> {
+    // Lấy tất cả repair request IDs từ các components trong proposal
+    const repairRequestIds = new Set<string>();
+
+    for (const item of proposal.items) {
+      if (item.oldComponent?.repairRequests) {
+        item.oldComponent.repairRequests.forEach((rr) => {
+          // Chỉ cập nhật các repair request đang ĐANG_XỬ_LÝ
+          if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
+            repairRequestIds.add(rr.id);
+          }
+        });
+      }
+    }
+
+    if (repairRequestIds.size === 0) {
+      console.warn(
+        `⚠️ Proposal ${proposal.proposalCode} không có repair requests đang ĐANG_XỬ_LÝ liên quan`
+      );
+      return;
+    }
+
+    const repairRequestIdsArray = Array.from(repairRequestIds);
+
+    // Cập nhật tất cả repair requests thành CHỜ_THAY_THẾ
+    await this.repairRequestRepository.update(
+      { id: In(repairRequestIdsArray) },
+      { status: RepairStatus.CHỜ_THAY_THẾ }
+    );
+
+    console.log(
+      `✅ Đã cập nhật ${repairRequestIdsArray.length} repair requests sang status CHỜ_THAY_THẾ cho proposal ${proposal.proposalCode}`
+    );
   }
 
   /**
@@ -388,9 +445,13 @@ export class ReplacementProposalsService {
         repairStatus,
       });
     } else {
-      // Mặc định chỉ lấy các yêu cầu đã tiếp nhận hoặc đang xử lý
+      // ⚠️ Mặc định chỉ lấy các yêu cầu đang xử lý (CHƯA chuyển sang CHỜ_THAY_THẾ)
+      // CHỜ_THAY_THẾ sẽ tự động set khi replacement proposal được duyệt
       queryBuilder.andWhere("rr.status IN (:...defaultStatuses)", {
-        defaultStatuses: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],
+        defaultStatuses: [
+          RepairStatus.ĐÃ_TIẾP_NHẬN,
+          RepairStatus.ĐANG_XỬ_LÝ,
+        ],
       });
     }
 

@@ -322,17 +322,19 @@ export class ReplacementProposalsController {
       2. API này load danh sách linh kiện cần thay thế từ các yêu cầu do kỹ thuật viên đó đảm nhận
       3. Kỹ thuật viên chọn một hoặc nhiều linh kiện
       4. Tạo đề xuất thay thế với các linh kiện đã chọn
+      5. Khi đề xuất được duyệt, các repair requests liên quan tự động chuyển sang CHỜ_THAY_THẾ
       
       **Lưu ý:**
       - Mỗi linh kiện chỉ nên xuất hiện trong 1 đề xuất duy nhất
       - Sau khi tạo đề xuất, linh kiện sẽ tự động biến mất khỏi danh sách
       - Chỉ hiển thị yêu cầu sửa chữa được phân công cho kỹ thuật viên hiện tại
+      - Status CHỜ_THAY_THẾ chỉ được set khi replacement proposal được phê duyệt
     `,
   })
   @ApiQuery({
     name: "repairStatus",
     required: false,
-    description: "Lọc theo trạng thái yêu cầu sửa chữa (có thể nhiều giá trị)",
+    description: "Lọc theo trạng thái yêu cầu sửa chữa (có thể nhiều giá trị). Mặc định: ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ",
     enum: RepairStatus,
     isArray: true,
     example: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],

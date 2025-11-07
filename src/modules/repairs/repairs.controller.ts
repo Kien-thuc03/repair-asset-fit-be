@@ -118,11 +118,12 @@ export class RepairsController {
     description: `
       Endpoint dành cho kỹ thuật viên để ghi nhận lỗi VÀ xử lý ngay tại chỗ trong một lần submit.
       
-      **Workflow:**
+      **Workflow mới:**
       1. Ghi nhận thông tin lỗi (asset, description, errorType, components/software)
       2. Thực hiện xử lý trực tiếp tại hiện trường
       3. Ghi nhận kết quả xử lý (resolutionNotes)
-      4. Hệ thống tự động cập nhật status phù hợp dựa trên finalStatus
+      4. Status luôn là ĐANG_XỬ_LÝ (trừ khi finalStatus = ĐÃ_HOÀN_THÀNH)
+      5. Nếu cần thay thế → Lập phiếu đề xuất → Khi được duyệt → Status tự động chuyển sang CHỜ_THAY_THẾ
       
       **Các kết quả xử lý:**
       
@@ -139,22 +140,22 @@ export class RepairsController {
       - Ví dụ: Thay cáp VGA, làm sạch tiếp xúc RAM, vặn chặt ốc
       - Asset status tự động chuyển từ DAMAGED → IN_USE
       
-      B.2. **Cần thay thế linh kiện:**
-      - finalStatus = \`CHỜ_THAY_THẾ\`
-      - Ví dụ: Nguồn cháy, RAM hỏng, ổ cứng bad sector
+      B.2. **Cần thay thế linh kiện:** ⚠️ MỚI
+      - KHÔNG set finalStatus (hoặc để undefined)
+      - Status tự động = \`ĐANG_XỬ_LÝ\`
       - Bắt buộc có \`componentIds\` (linh kiện cần thay thế)
-      - Asset status vẫn DAMAGED (đợi thay thế xong mới chuyển)
+      - Sau đó: Lập phiếu đề xuất thay thế → Khi được duyệt → Status tự động chuyển sang CHỜ_THAY_THẾ
       
       **C. Chỉ ghi nhận lỗi (không xử lý ngay):**
       - Không cung cấp \`finalStatus\` và \`resolutionNotes\`
-      - Repair request được tạo với status mặc định \`CHỜ_TIẾP_NHẬN\`
+      - Repair request được tạo với status \`ĐANG_XỬ_LÝ\`
       - Có thể xử lý sau bằng endpoint PATCH /:id
       
       **Validation:**
       - Kiểm tra component/software không đang trong repair request khác chưa hoàn thành
-      - Lỗi phần mềm không thể có finalStatus = CHỜ_THAY_THẾ
-      - CHỜ_THAY_THẾ bắt buộc phải có componentIds
-      - Có finalStatus bắt buộc phải có resolutionNotes
+      - Lỗi phần mềm chỉ có thể finalStatus = ĐÃ_HOÀN_THÀNH
+      - finalStatus chỉ cho phép ĐÃ_HOÀN_THÀNH (không cho phép CHỜ_THAY_THẾ)
+      - Có finalStatus = ĐÃ_HOÀN_THÀNH bắt buộc phải có resolutionNotes
     `,
   })
   @ApiBody({ type: CreateAndProcessRepairRequestDto })
@@ -168,30 +169,30 @@ export class RepairsController {
     description: "Dữ liệu không hợp lệ hoặc vi phạm business logic",
     schema: {
       examples: {
+        invalidFinalStatus: {
+          summary: "finalStatus không hợp lệ",
+          value: {
+            statusCode: 400,
+            message:
+              "finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH. Nếu cần thay thế linh kiện, không set finalStatus (sẽ tự động set ĐANG_XỬ_LÝ và sau đó chuyển sang CHỜ_THAY_THẾ khi phiếu đề xuất được duyệt).",
+            error: "Bad Request",
+          },
+        },
         missingResolutionNotes: {
-          summary: "Thiếu ghi chú xử lý",
+          summary: "Thiếu ghi chú xử lý khi ĐÃ_HOÀN_THÀNH",
           value: {
             statusCode: 400,
             message:
-              "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng",
+              "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái ĐÃ_HOÀN_THÀNH",
             error: "Bad Request",
           },
         },
-        softwareNoReplacement: {
-          summary: "Lỗi phần mềm không thể CHỜ_THAY_THẾ",
+        softwareWrongStatus: {
+          summary: "Lỗi phần mềm chỉ được ĐÃ_HOÀN_THÀNH",
           value: {
             statusCode: 400,
             message:
-              "Trạng thái CHỜ_THAY_THẾ không áp dụng cho lỗi phần mềm (MAY_HU_PHAN_MEM). Lỗi phần mềm chỉ có thể có trạng thái ĐÃ_HOÀN_THÀNH.",
-            error: "Bad Request",
-          },
-        },
-        replacementNoComponents: {
-          summary: "CHỜ_THAY_THẾ thiếu componentIds",
-          value: {
-            statusCode: 400,
-            message:
-              "Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi chọn trạng thái CHỜ_THAY_THẾ",
+              "Lỗi phần mềm (MAY_HU_PHAN_MEM) chỉ có thể có trạng thái cuối cùng là ĐÃ_HOÀN_THÀNH",
             error: "Bad Request",
           },
         },
@@ -201,6 +202,15 @@ export class RepairsController {
             statusCode: 400,
             message:
               "Bắt buộc phải chọn ít nhất 1 phần mềm (softwareIds) khi errorType là MAY_HU_PHAN_MEM",
+            error: "Bad Request",
+          },
+        },
+        hardwareNoComponents: {
+          summary: "Lỗi phần cứng thiếu componentIds",
+          value: {
+            statusCode: 400,
+            message:
+              "Bắt buộc phải chọn ít nhất 1 linh kiện (componentIds) khi xử lý lỗi phần cứng",
             error: "Bad Request",
           },
         },
