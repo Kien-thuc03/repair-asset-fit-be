@@ -35,7 +35,7 @@ import { Permissions } from '../auth/decorators/permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 
 @ApiTags('Users')
-@Controller('users')
+@Controller('api/v1/users')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))

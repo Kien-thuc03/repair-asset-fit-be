@@ -314,22 +314,37 @@ export class RepairsService {
 
     // Transform nested objects
     if (request.computerAsset) {
+      // Get machineLabel from Computer entity
+      let machineLabel: string | undefined;
+      if (request.computerAsset.computer) {
+        machineLabel = request.computerAsset.computer.machineLabel;
+      }
+
       dto.computerAsset = {
         id: request.computerAsset.id,
         ktCode: request.computerAsset.ktCode,
         name: request.computerAsset.name,
         type: request.computerAsset.type,
         status: request.computerAsset.status,
+        machineLabel: machineLabel,
       } as any;
 
       // Add room info if exists
       if (request.computerAsset.currentRoom) {
+        const room = request.computerAsset.currentRoom;
         dto.room = {
-          id: request.computerAsset.currentRoom.id,
-          name: request.computerAsset.currentRoom.name,
-          building: request.computerAsset.currentRoom.building,
-          floor: request.computerAsset.currentRoom.floor,
-          roomNumber: request.computerAsset.currentRoom.roomNumber,
+          id: room.id,
+          name: room.name,
+          building: room.building,
+          floor: room.floor,
+          roomNumber: room.roomNumber,
+          unit: room.unit
+            ? {
+                id: room.unit.id,
+                name: room.unit.name,
+                code: room.unit.unitCode.toString(),
+              }
+            : undefined,
         } as any;
       }
     }
@@ -340,6 +355,13 @@ export class RepairsService {
         fullName: request.reporter.fullName,
         email: request.reporter.email,
         username: request.reporter.username,
+        roles: request.reporter.roles
+          ? request.reporter.roles.map((role) => ({
+              id: role.id,
+              name: role.name,
+              code: role.code,
+            }))
+          : undefined,
       } as any;
     }
 
@@ -349,6 +371,13 @@ export class RepairsService {
         fullName: request.assignedTechnician.fullName,
         email: request.assignedTechnician.email,
         username: request.assignedTechnician.username,
+        roles: request.assignedTechnician.roles
+          ? request.assignedTechnician.roles.map((role) => ({
+              id: role.id,
+              name: role.name,
+              code: role.code,
+            }))
+          : undefined,
       } as any;
     }
 
@@ -410,9 +439,13 @@ export class RepairsService {
       where: { id },
       relations: [
         "computerAsset",
+        "computerAsset.computer",
         "computerAsset.currentRoom",
+        "computerAsset.currentRoom.unit",
         "reporter",
+        "reporter.roles",
         "assignedTechnician",
+        "assignedTechnician.roles",
         "components",
       ],
     });
@@ -515,9 +548,13 @@ export class RepairsService {
       where: { assignedTechnicianId: technicianId },
       relations: [
         "computerAsset",
+        "computerAsset.computer",
         "computerAsset.currentRoom",
+        "computerAsset.currentRoom.unit",
         "reporter",
+        "reporter.roles",
         "assignedTechnician",
+        "assignedTechnician.roles",
         "components",
       ],
       order: {
@@ -553,9 +590,13 @@ export class RepairsService {
       where: { reporterId: reporterId },
       relations: [
         "computerAsset",
+        "computerAsset.computer",
         "computerAsset.currentRoom",
+        "computerAsset.currentRoom.unit",
         "reporter",
+        "reporter.roles",
         "assignedTechnician",
+        "assignedTechnician.roles",
         "components",
       ],
       order: {
@@ -995,9 +1036,13 @@ export class RepairsService {
     const queryBuilder = this.repairRequestRepository
       .createQueryBuilder("request")
       .leftJoinAndSelect("request.computerAsset", "asset")
+      .leftJoinAndSelect("asset.computer", "computer")
       .leftJoinAndSelect("request.reporter", "reporter")
+      .leftJoinAndSelect("reporter.roles", "reporterRoles")
       .leftJoinAndSelect("request.assignedTechnician", "technician")
+      .leftJoinAndSelect("technician.roles", "technicianRoles")
       .leftJoinAndSelect("asset.currentRoom", "room")
+      .leftJoinAndSelect("room.unit", "unit")
       .leftJoinAndSelect("request.components", "components");
 
     // Lọc theo computerAssetId

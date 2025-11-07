@@ -28,12 +28,14 @@ import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
 import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../auth/guards/permissions.guard";
+import { Permissions } from "../auth/decorators/permissions.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "src/entities/user.entity";
 
 @ApiTags("Repairs")
 @Controller("api/v1/repairs")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RepairsController {
   constructor(private readonly repairsService: RepairsService) {}
@@ -625,9 +627,30 @@ export class RepairsController {
   }
 
   @Get("repair-requests/technicians/:technicianId")
+  @Permissions("RA_PERM_VIEW_REPAIR")
+  @ApiOperation({
+    summary: "Lấy danh sách yêu cầu sửa chữa theo kỹ thuật viên",
+    description: `
+      Lấy danh sách tất cả yêu cầu sửa chữa được phân công cho một kỹ thuật viên cụ thể.
+      
+      **Sử dụng khi:**
+      - Kỹ thuật viên muốn xem danh sách công việc được phân công
+      - Quản lý muốn theo dõi workload của từng kỹ thuật viên
+      - Thống kê hiệu suất làm việc theo kỹ thuật viên
+      
+      **Yêu cầu quyền:** RA_PERM_VIEW_REPAIR
+    `,
+  })
+  @ApiParam({
+    name: "technicianId",
+    description: "ID của kỹ thuật viên",
+    format: "uuid",
+    example: "47d9013d-6c7e-48d2-8443-6300632ed811",
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: "Lấy danh sách yêu cầu sửa chữa của kỹ thuật viên thành công",
+    type: [RepairRequestResponseDto],
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
