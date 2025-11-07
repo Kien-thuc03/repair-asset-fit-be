@@ -124,15 +124,12 @@ export class ComponentFromRepairDto {
  */
 export class ComponentFromRepairFilterDto {
   @ApiPropertyOptional({
-    description: "Lọc theo trạng thái yêu cầu sửa chữa",
-    enum: RepairStatus,
-    isArray: true,
-    example: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],
+    description: "Tìm kiếm theo mã yêu cầu sửa chữa (YCSC)",
+    example: "YCSC-2025-0002",
   })
   @IsOptional()
-  @IsArray()
-  @IsEnum(RepairStatus, { each: true })
-  repairStatus?: RepairStatus[];
+  @IsString()
+  requestCode?: string;
 
   @ApiPropertyOptional({
     description: "Lọc theo loại linh kiện",
@@ -160,6 +157,14 @@ export class ComponentFromRepairFilterDto {
   @IsOptional()
   @IsString()
   building?: string;
+
+  @ApiPropertyOptional({
+    description: "Lọc theo tầng",
+    example: "1",
+  })
+  @IsOptional()
+  @IsString()
+  floor?: string;
 
   @ApiPropertyOptional({
     description: "Lọc theo phòng",

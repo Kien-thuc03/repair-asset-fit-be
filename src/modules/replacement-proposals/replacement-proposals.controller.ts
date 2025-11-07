@@ -310,34 +310,34 @@ export class ReplacementProposalsController {
       - Lý do thay thế (từ mô tả repair request)
       
       **Tính năng lọc:**
-      - Theo trạng thái yêu cầu sửa chữa (mặc định: ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ)
+      - Tìm kiếm theo mã YCSC (requestCode)
       - Theo loại linh kiện (CPU, RAM, GPU, v.v.)
       - Tìm kiếm theo tên linh kiện, tài sản, mã tài sản
-      - Theo vị trí (tòa nhà, phòng)
+      - Theo vị trí (tòa nhà, tầng, phòng)
       - Loại trừ linh kiện đã có trong đề xuất (mặc định: true)
       - **Tự động lọc theo kỹ thuật viên hiện tại (từ JWT token)**
+      - **Tự động lọc theo status (ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ) - không cho phép override**
       
       **Use case:**
       1. Kỹ thuật viên đăng nhập và vào trang "Lập phiếu đề xuất thay thế"
       2. API này load danh sách linh kiện cần thay thế từ các yêu cầu do kỹ thuật viên đó đảm nhận
-      3. Kỹ thuật viên chọn một hoặc nhiều linh kiện
-      4. Tạo đề xuất thay thế với các linh kiện đã chọn
-      5. Khi đề xuất được duyệt, các repair requests liên quan tự động chuyển sang CHỜ_THAY_THẾ
+      3. Kỹ thuật viên có thể lọc theo: Tòa nhà → Tầng → Phòng hoặc tìm theo mã YCSC
+      4. Kỹ thuật viên chọn một hoặc nhiều linh kiện
+      5. Tạo đề xuất thay thế với các linh kiện đã chọn
+      6. Khi đề xuất được duyệt, các repair requests liên quan tự động chuyển sang CHỜ_THAY_THẾ
       
       **Lưu ý:**
       - Mỗi linh kiện chỉ nên xuất hiện trong 1 đề xuất duy nhất
       - Sau khi tạo đề xuất, linh kiện sẽ tự động biến mất khỏi danh sách
       - Chỉ hiển thị yêu cầu sửa chữa được phân công cho kỹ thuật viên hiện tại
-      - Status CHỜ_THAY_THẾ chỉ được set khi replacement proposal được phê duyệt
+      - Status luôn cố định là ĐÃ_TIẾP_NHẬN và ĐANG_XỬ_LÝ (không thể override qua filter)
     `,
   })
   @ApiQuery({
-    name: "repairStatus",
+    name: "requestCode",
     required: false,
-    description: "Lọc theo trạng thái yêu cầu sửa chữa (có thể nhiều giá trị). Mặc định: ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ",
-    enum: RepairStatus,
-    isArray: true,
-    example: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],
+    description: "Tìm kiếm theo mã yêu cầu sửa chữa (YCSC)",
+    example: "YCSC-2025-0002",
   })
   @ApiQuery({
     name: "componentType",
@@ -358,6 +358,12 @@ export class ReplacementProposalsController {
     required: false,
     description: "Lọc theo tòa nhà",
     example: "A",
+  })
+  @ApiQuery({
+    name: "floor",
+    required: false,
+    description: "Lọc theo tầng",
+    example: "1",
   })
   @ApiQuery({
     name: "roomName",

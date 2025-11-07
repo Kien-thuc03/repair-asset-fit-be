@@ -398,10 +398,11 @@ export class ReplacementProposalsService {
     currentUser: User
   ) {
     const {
-      repairStatus,
+      requestCode,
       componentType,
       search,
       building,
+      floor,
       roomName,
       excludeInProposal = true,
       page = 1,
@@ -432,26 +433,25 @@ export class ReplacementProposalsService {
         "a.fixed_code as assetCode",
         "r.name as roomName",
         "r.building as buildingName",
+        "r.floor as floor",
         'c."machineLabel" as machineLabel',
       ])
       .where("cc.id IS NOT NULL") // Only get repair requests with components
       .andWhere('rr."assignedTechnicianId" = :technicianId', {
         technicianId: currentUser.id,
-      }); // Chỉ lấy yêu cầu được phân công cho kỹ thuật viên hiện tại
-
-    // Filter by repair status
-    if (repairStatus && repairStatus.length > 0) {
-      queryBuilder.andWhere("rr.status IN (:...repairStatus)", {
-        repairStatus,
-      });
-    } else {
-      // ⚠️ Mặc định chỉ lấy các yêu cầu đang xử lý (CHƯA chuyển sang CHỜ_THAY_THẾ)
-      // CHỜ_THAY_THẾ sẽ tự động set khi replacement proposal được duyệt
-      queryBuilder.andWhere("rr.status IN (:...defaultStatuses)", {
+      }) // Chỉ lấy yêu cầu được phân công cho kỹ thuật viên hiện tại
+      .andWhere("rr.status IN (:...defaultStatuses)", {
+        // Luôn lấy các yêu cầu đang xử lý (không phụ thuộc filter)
         defaultStatuses: [
           RepairStatus.ĐÃ_TIẾP_NHẬN,
           RepairStatus.ĐANG_XỬ_LÝ,
         ],
+      });
+
+    // 🔥 MỚI: Filter by request code (YCSC)
+    if (requestCode) {
+      queryBuilder.andWhere('rr."requestCode" ILIKE :requestCode', {
+        requestCode: `%${requestCode}%`,
       });
     }
 
@@ -473,6 +473,11 @@ export class ReplacementProposalsService {
     // Filter by building
     if (building) {
       queryBuilder.andWhere("r.building = :building", { building });
+    }
+
+    // 🔥 MỚI: Filter by floor
+    if (floor) {
+      queryBuilder.andWhere("r.floor = :floor", { floor });
     }
 
     // Filter by room
