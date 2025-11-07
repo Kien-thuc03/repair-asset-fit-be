@@ -25,10 +25,13 @@ import { ReplacementProposalFilterDto } from "./dto/replacement-proposal-filter.
 import { ReplacementProposalResponseDto } from "./dto/replacement-proposal-response.dto";
 import { UpdateReplacementProposalStatusDto } from "./dto/update-replacement-proposal-status.dto";
 import { CreateReplacementProposalDto } from "./dto/create-replacement-proposal.dto";
+import { ComponentFromRepairFilterDto } from "./dto/component-from-repair.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
 import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
+import { RepairStatus } from "../../common/shared/RepairStatus";
+import { ComponentType } from "../../common/shared/ComponentType";
 
 @ApiTags("Replacement Proposals")
 @Controller("api/v1/replacement-proposals")
@@ -285,6 +288,160 @@ export class ReplacementProposalsController {
   })
   async findAll(@Query() filter: ReplacementProposalFilterDto) {
     return this.replacementProposalsService.findAll(filter);
+  }
+
+  @Get("current-user/components-from-repair")
+  @ApiOperation({
+    summary: "Lấy danh sách linh kiện từ yêu cầu sửa chữa mà kỹ thuật viên đảm nhận",
+    description: `
+      Lấy danh sách các linh kiện từ các yêu cầu sửa chữa mà kỹ thuật viên hiện tại đảm nhận để lập đề xuất thay thế.
+      
+      **Mục đích:**
+      - Hiển thị danh sách linh kiện cần thay thế từ các yêu cầu sửa chữa mà kỹ thuật viên được phân công
+      - Kỹ thuật viên chỉ thấy các yêu cầu sửa chữa do mình xử lý (assignedTechnicianId)
+      - Kỹ thuật viên có thể chọn nhiều linh kiện để tạo đề xuất thay thế hàng loạt
+      - Tự động lọc ra các linh kiện đã có trong đề xuất (tránh trùng lặp)
+      
+      **Dữ liệu trả về bao gồm:**
+      - Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật)
+      - Thông tin tài sản (máy tính) chứa linh kiện
+      - Vị trí (tòa nhà, phòng, số máy)
+      - Thông tin yêu cầu sửa chữa (mã, trạng thái, mô tả)
+      - Lý do thay thế (từ mô tả repair request)
+      
+      **Tính năng lọc:**
+      - Theo trạng thái yêu cầu sửa chữa (mặc định: ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ)
+      - Theo loại linh kiện (CPU, RAM, GPU, v.v.)
+      - Tìm kiếm theo tên linh kiện, tài sản, mã tài sản
+      - Theo vị trí (tòa nhà, phòng)
+      - Loại trừ linh kiện đã có trong đề xuất (mặc định: true)
+      - **Tự động lọc theo kỹ thuật viên hiện tại (từ JWT token)**
+      
+      **Use case:**
+      1. Kỹ thuật viên đăng nhập và vào trang "Lập phiếu đề xuất thay thế"
+      2. API này load danh sách linh kiện cần thay thế từ các yêu cầu do kỹ thuật viên đó đảm nhận
+      3. Kỹ thuật viên chọn một hoặc nhiều linh kiện
+      4. Tạo đề xuất thay thế với các linh kiện đã chọn
+      
+      **Lưu ý:**
+      - Mỗi linh kiện chỉ nên xuất hiện trong 1 đề xuất duy nhất
+      - Sau khi tạo đề xuất, linh kiện sẽ tự động biến mất khỏi danh sách
+      - Chỉ hiển thị yêu cầu sửa chữa được phân công cho kỹ thuật viên hiện tại
+    `,
+  })
+  @ApiQuery({
+    name: "repairStatus",
+    required: false,
+    description: "Lọc theo trạng thái yêu cầu sửa chữa (có thể nhiều giá trị)",
+    enum: RepairStatus,
+    isArray: true,
+    example: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],
+  })
+  @ApiQuery({
+    name: "componentType",
+    required: false,
+    description: "Lọc theo loại linh kiện (có thể nhiều giá trị)",
+    enum: ComponentType,
+    isArray: true,
+    example: [ComponentType.RAM, ComponentType.CPU],
+  })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    description: "Tìm kiếm theo tên linh kiện, tài sản, mã tài sản",
+    example: "RAM",
+  })
+  @ApiQuery({
+    name: "building",
+    required: false,
+    description: "Lọc theo tòa nhà",
+    example: "A",
+  })
+  @ApiQuery({
+    name: "roomName",
+    required: false,
+    description: "Lọc theo tên phòng",
+    example: "A01.03",
+  })
+  @ApiQuery({
+    name: "excludeInProposal",
+    required: false,
+    description:
+      "Loại trừ linh kiện đã có trong đề xuất thay thế (mặc định: true)",
+    type: Boolean,
+    example: true,
+  })
+  @ApiQuery({
+    name: "page",
+    required: false,
+    description: "Số trang (từ 1)",
+    example: 1,
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Số lượng/trang",
+    example: 10,
+  })
+  @ApiQuery({
+    name: "sortBy",
+    required: false,
+    description: "Trường sắp xếp",
+    example: "createdAt",
+  })
+  @ApiQuery({
+    name: "sortOrder",
+    required: false,
+    description: "Thứ tự sắp xếp",
+    example: "DESC",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách linh kiện thành công",
+    schema: {
+      example: {
+        data: [
+          {
+            repairRequestId: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
+            requestCode: "YCSC-2025-0002",
+            repairStatus: "ĐÃ_TIẾP_NHẬN",
+            repairDescription:
+              "Chuột không hoạt động, không di chuyển được con trỏ.",
+            componentId: "35560238-96ec-4242-9e17-be3a0e3b23cc",
+            componentName: "KEYBOARD",
+            componentType: "KEYBOARD",
+            componentSpecs: "Generic USB Keyboard",
+            assetId: "bb8d95c3-d944-4c76-aa7f-61c461f33daa",
+            assetName: "Máy vi tính Vostro 270MT",
+            assetCode: "94",
+            roomName: "A01.03",
+            buildingName: "A",
+            machineLabel: "20",
+            reason:
+              "Chuột không hoạt động, không di chuyển được con trỏ.",
+            quantity: 1,
+            createdAt: "2025-11-07T10:30:00.000Z",
+          },
+        ],
+        total: 10,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập",
+  })
+  async getAvailableComponents(
+    @Query() filter: ComponentFromRepairFilterDto,
+    @CurrentUser() user: User
+  ) {
+    return this.replacementProposalsService.getComponentsFromRepairRequests(
+      filter,
+      user
+    );
   }
 
   @Get(":id")

@@ -4,9 +4,16 @@ import { ReplacementProposalsController } from "./replacement-proposals.controll
 import { ReplacementProposalsService } from "./replacement-proposals.service";
 import { ReplacementProposal } from "../../entities/replacement-proposal.entity";
 import { ReplacementItem } from "../../entities/replacement-item.entity";
+import { RepairRequest } from "../../entities/repair-request.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ReplacementProposal, ReplacementItem])],
+  imports: [
+    TypeOrmModule.forFeature([
+      ReplacementProposal,
+      ReplacementItem,
+      RepairRequest,
+    ]),
+  ],
   controllers: [ReplacementProposalsController],
   providers: [ReplacementProposalsService],
   exports: [ReplacementProposalsService],

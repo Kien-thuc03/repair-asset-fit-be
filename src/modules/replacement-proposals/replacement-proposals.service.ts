@@ -4,14 +4,20 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Like, Between, DataSource } from "typeorm";
+import { Repository, Like, Between, DataSource, In } from "typeorm";
 import { ReplacementProposal } from "../../entities/replacement-proposal.entity";
 import { ReplacementItem } from "../../entities/replacement-item.entity";
+import { RepairRequest } from "../../entities/repair-request.entity";
 import { ReplacementProposalFilterDto } from "./dto/replacement-proposal-filter.dto";
 import { ReplacementProposalResponseDto } from "./dto/replacement-proposal-response.dto";
 import { UpdateReplacementProposalStatusDto } from "./dto/update-replacement-proposal-status.dto";
 import { CreateReplacementProposalDto } from "./dto/create-replacement-proposal.dto";
+import {
+  ComponentFromRepairDto,
+  ComponentFromRepairFilterDto,
+} from "./dto/component-from-repair.dto";
 import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
+import { RepairStatus } from "../../common/shared/RepairStatus";
 import { User } from "../../entities/user.entity";
 
 @Injectable()
@@ -21,6 +27,8 @@ export class ReplacementProposalsService {
     private replacementProposalRepository: Repository<ReplacementProposal>,
     @InjectRepository(ReplacementItem)
     private replacementItemRepository: Repository<ReplacementItem>,
+    @InjectRepository(RepairRequest)
+    private repairRequestRepository: Repository<RepairRequest>,
     private dataSource: DataSource
   ) {}
 
@@ -321,6 +329,174 @@ export class ReplacementProposalsService {
     });
 
     return proposals.map((proposal) => this.mapToResponseDto(proposal));
+  }
+
+  /**
+   * Lấy danh sách linh kiện từ các yêu cầu sửa chữa mà kỹ thuật viên đảm nhận
+   * Dùng để kỹ thuật viên chọn linh kiện khi lập đề xuất thay thế
+   * Chỉ lấy các yêu cầu sửa chữa được phân công cho kỹ thuật viên hiện tại
+   */
+  async getComponentsFromRepairRequests(
+    filter: ComponentFromRepairFilterDto,
+    currentUser: User
+  ) {
+    const {
+      repairStatus,
+      componentType,
+      search,
+      building,
+      roomName,
+      excludeInProposal = true,
+      page = 1,
+      limit = 10,
+      sortBy = "createdAt",
+      sortOrder = "DESC",
+    } = filter;
+
+    // Build the query
+    const queryBuilder = this.repairRequestRepository
+      .createQueryBuilder("rr")
+      .leftJoin("rr.components", "cc")
+      .leftJoin("rr.computerAsset", "a")
+      .leftJoin("a.computer", "c")
+      .leftJoin("a.currentRoom", "r")
+      .select([
+        "rr.id as repairRequestId",
+        'rr."requestCode" as requestCode',
+        "rr.status as repairStatus",
+        "rr.description as repairDescription",
+        'rr."createdAt" as createdAt',
+        "cc.id as componentId",
+        "cc.name as componentName",
+        'cc."componentType" as componentType',
+        'cc."componentSpecs" as componentSpecs',
+        "a.id as assetId",
+        "a.name as assetName",
+        "a.fixed_code as assetCode",
+        "r.name as roomName",
+        "r.building as buildingName",
+        'c."machineLabel" as machineLabel',
+      ])
+      .where("cc.id IS NOT NULL") // Only get repair requests with components
+      .andWhere('rr."assignedTechnicianId" = :technicianId', {
+        technicianId: currentUser.id,
+      }); // Chỉ lấy yêu cầu được phân công cho kỹ thuật viên hiện tại
+
+    // Filter by repair status
+    if (repairStatus && repairStatus.length > 0) {
+      queryBuilder.andWhere("rr.status IN (:...repairStatus)", {
+        repairStatus,
+      });
+    } else {
+      // Mặc định chỉ lấy các yêu cầu đã tiếp nhận hoặc đang xử lý
+      queryBuilder.andWhere("rr.status IN (:...defaultStatuses)", {
+        defaultStatuses: [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ],
+      });
+    }
+
+    // Filter by component type
+    if (componentType && componentType.length > 0) {
+      queryBuilder.andWhere('cc."componentType" IN (:...componentType)', {
+        componentType,
+      });
+    }
+
+    // Search by component name, asset name, or asset code
+    if (search) {
+      queryBuilder.andWhere(
+        "(cc.name ILIKE :search OR a.name ILIKE :search OR a.fixed_code ILIKE :search)",
+        { search: `%${search}%` }
+      );
+    }
+
+    // Filter by building
+    if (building) {
+      queryBuilder.andWhere("r.building = :building", { building });
+    }
+
+    // Filter by room
+    if (roomName) {
+      queryBuilder.andWhere("r.name = :roomName", { roomName });
+    }
+
+    // Exclude components already in replacement proposals
+    if (excludeInProposal) {
+      queryBuilder.andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('ri."oldComponentId"')
+          .from("replacement_items", "ri")
+          .where('ri."oldComponentId" IS NOT NULL')
+          .getQuery();
+        return `cc.id NOT IN ${subQuery}`;
+      });
+    }
+
+    // Get total count before pagination
+    const totalQuery = await queryBuilder.getRawMany();
+    const total = totalQuery.length;
+
+    // Sorting
+    const allowedSortFields = [
+      "createdAt",
+      "componentName",
+      "assetName",
+      "requestCode",
+    ];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+
+    // Map sortBy to actual column names
+    let orderByField = 'rr."createdAt"';
+    switch (sortField) {
+      case "componentName":
+        orderByField = "cc.name";
+        break;
+      case "assetName":
+        orderByField = "a.name";
+        break;
+      case "requestCode":
+        orderByField = 'rr."requestCode"';
+        break;
+      default:
+        orderByField = 'rr."createdAt"';
+    }
+
+    queryBuilder.orderBy(orderByField, sortOrder);
+
+    // Pagination
+    const skip = (page - 1) * limit;
+    queryBuilder.offset(skip).limit(limit);
+
+    const rawResults = await queryBuilder.getRawMany();
+
+    // Map to DTO
+    const data: ComponentFromRepairDto[] = rawResults.map((row) => ({
+      repairRequestId: row.repairrequestid,
+      requestCode: row.requestcode,
+      repairStatus: row.repairstatus,
+      repairDescription: row.repairdescription,
+      componentId: row.componentid,
+      componentName: row.componentname,
+      componentType: row.componenttype,
+      componentSpecs: row.componentspecs,
+      assetId: row.assetid,
+      assetName: row.assetname,
+      assetCode: row.assetcode,
+      roomName: row.roomname,
+      buildingName: row.buildingname,
+      machineLabel: row.machinelabel,
+      reason: row.repairdescription, // Sử dụng description của repair request làm reason
+      quantity: 1, // Mặc định 1
+      createdAt: row.createdat,
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
