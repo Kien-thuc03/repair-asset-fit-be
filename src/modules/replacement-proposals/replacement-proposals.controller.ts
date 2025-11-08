@@ -318,14 +318,6 @@ export class ReplacementProposalsController {
       - **Tự động lọc theo kỹ thuật viên hiện tại (từ JWT token)**
       - **Tự động lọc theo status (ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ) - không cho phép override**
       
-      **Use case:**
-      1. Kỹ thuật viên đăng nhập và vào trang "Lập phiếu đề xuất thay thế"
-      2. API này load danh sách linh kiện cần thay thế từ các yêu cầu do kỹ thuật viên đó đảm nhận
-      3. Kỹ thuật viên có thể lọc theo: Tòa nhà → Tầng → Phòng hoặc tìm theo mã YCSC
-      4. Kỹ thuật viên chọn một hoặc nhiều linh kiện
-      5. Tạo đề xuất thay thế với các linh kiện đã chọn
-      6. Khi đề xuất được duyệt, các repair requests liên quan tự động chuyển sang CHỜ_THAY_THẾ
-      
       **Lưu ý:**
       - Mỗi linh kiện chỉ nên xuất hiện trong 1 đề xuất duy nhất
       - Sau khi tạo đề xuất, linh kiện sẽ tự động biến mất khỏi danh sách
