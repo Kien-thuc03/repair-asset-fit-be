@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional, IsArray, IsString, IsBoolean, IsNumber, IsEnum, Min } from "class-validator";
-import { Type } from "class-transformer";
+import { Type, Transform } from "class-transformer";
 import { ComponentType } from "../../../common/shared/ComponentType";
 import { RepairStatus } from "../../../common/shared/RepairStatus";
 
@@ -138,8 +138,14 @@ export class ComponentFromRepairFilterDto {
     example: [ComponentType.RAM, ComponentType.CPU],
   })
   @IsOptional()
+  @Transform(({ value }) => {
+    // Chuyển single value thành array
+    if (value === undefined || value === null) return value;
+    return Array.isArray(value) ? value : [value];
+  })
   @IsArray()
   @IsEnum(ComponentType, { each: true })
+  @Type(() => String)
   componentType?: ComponentType[];
 
   @ApiPropertyOptional({
