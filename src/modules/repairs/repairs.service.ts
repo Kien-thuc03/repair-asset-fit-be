@@ -521,7 +521,8 @@ export class RepairsService {
     }
 
     // Cập nhật thông tin
-    Object.assign(repairRequest, updateDto);
+    const { componentIds, ...dataToUpdate } = updateDto;
+    Object.assign(repairRequest, dataToUpdate);
 
     // Cập nhật timestamp tương ứng với status
     if (updateDto.status) {
@@ -530,6 +531,25 @@ export class RepairsService {
 
     const updatedRequest =
       await this.repairRequestRepository.save(repairRequest);
+
+    // ⚠️ Cập nhật trạng thái component thành FAULTY khi chuyển sang CHỜ_THAY_THẾ
+    if (updateDto.status === RepairStatus.CHỜ_THAY_THẾ && componentIds && componentIds.length > 0) {
+      const components = await this.computerComponentRepository.findBy({
+        id: In(componentIds)
+      });
+
+      for (const component of components) {
+        // Chỉ cập nhật nếu component đang ở trạng thái INSTALLED
+        if (component.status === ComponentStatus.INSTALLED) {
+          component.status = ComponentStatus.FAULTY;
+          await this.computerComponentRepository.save(component);
+        }
+      }
+
+      // Liên kết components với repair request
+      repairRequest.components = components;
+      await this.repairRequestRepository.save(repairRequest);
+    }
 
     // Lấy thông tin đầy đủ với relations
     const fullRequest = await this.repairRequestRepository.findOne({

@@ -67,4 +67,14 @@ export class UpdateRepairRequestDto {
   @IsString({ message: "Ghi chú phải là chuỗi ký tự" })
   @MaxLength(2000, { message: "Ghi chú không được vượt quá 2000 ký tự" })
   resolutionNotes?: string;
+
+  @ApiPropertyOptional({
+    description: "Danh sách ID các component bị lỗi cần đánh dấu FAULTY (khi chuyển sang CHỜ_THAY_THẾ)",
+    type: [String],
+    example: ["5c9cc32e-3e54-4303-b2ec-68f4cd84091d"]
+  })
+  @IsOptional()
+  @IsArray({ message: "Component IDs phải là mảng" })
+  @IsUUID(4, { each: true, message: "Mỗi component ID phải là UUID hợp lệ" })
+  componentIds?: string[];
 }
