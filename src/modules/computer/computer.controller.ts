@@ -22,6 +22,7 @@ import { ComputerService } from "./computer.service";
 import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
+import { GetComputersFilterDto, GetComputersResponseDto } from "./dto/get-computers-filter.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -45,16 +46,53 @@ export class ComputerController {
   getComputersByRoom(@Param("roomId") roomId: string) {
     return this.computerService.getComputersByRoom(roomId);
   }
+
   /**
-   * GET /computers
-   * Lấy tất cả máy tính
+   * GET /computer
+   * Lấy danh sách máy tính với filter và pagination
+   * Dành cho giao diện quản lý thiết bị của kỹ thuật viên
    *
-   * @returns Danh sách máy tính kèm thông tin asset, room và components
+   * @param filterDto - Query parameters cho filter và pagination
+   * @returns Danh sách máy tính với thông tin đầy đủ, pagination và summary
    */
   @Get()
   @HttpCode(HttpStatus.OK)
-  getAllComputers() {
-    return this.computerService.getAllComputers();
+  @ApiOperation({
+    summary: "Lấy danh sách máy tính với filter và pagination",
+    description: `
+      API lấy danh sách máy tính với đầy đủ thông tin cho giao diện quản lý thiết bị.
+      
+      **Thông tin trả về:**
+      - Thông tin tài sản (asset): ID, mã KT, mã TSCĐ, tên, thông số, trạng thái, ngày nhập, xuất xứ
+      - Thông tin phòng (room): ID, tên, số phòng, mã phòng, tòa nhà, tầng
+      - Danh sách linh kiện (components): Loại, tên, thông số, serial, trạng thái, ngày lắp đặt
+      - Thống kê: Tổng số máy tính, phân bổ theo trạng thái
+      
+      **Filter hỗ trợ:**
+      - Tìm kiếm theo tên, mã KT, mã TSCĐ, số máy
+      - Lọc theo trạng thái tài sản (IN_USE, DAMAGED, etc.)
+      - Lọc theo tòa nhà, tầng, phòng
+      - Lọc theo danh mục
+      - Sắp xếp theo nhiều tiêu chí
+      - Phân trang linh hoạt (mặc định: page=1, limit=12)
+      
+      **Lưu ý:**
+      - Nếu không truyền query params, sẽ trả về trang đầu tiên với 12 items
+      - Có thể kết hợp nhiều filter cùng lúc
+      - Summary statistics luôn tính trên toàn bộ dữ liệu (không bị ảnh hưởng bởi filter)
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy danh sách máy tính thành công",
+    type: GetComputersResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Chưa xác thực",
+  })
+  getComputersWithFilter(@Query() filterDto: GetComputersFilterDto) {
+    return this.computerService.getComputersWithFilter(filterDto);
   }
 
   /**

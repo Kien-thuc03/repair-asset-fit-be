@@ -1,15 +1,17 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, SelectQueryBuilder } from "typeorm";
 import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
+import { GetComputersFilterDto } from "./dto/get-computers-filter.dto";
 import { Computer } from "../../entities/computer.entity";
 import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
 import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
+import { AssetStatus } from "../../common/shared/AssetStatus";
 
 @Injectable()
 export class ComputerService {
@@ -530,6 +532,172 @@ export class ComputerService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Lấy danh sách máy tính với filter và pagination
+   * Dành cho giao diện quản lý thiết bị của kỹ thuật viên
+   * 
+   * @param filterDto - DTO chứa các tham số filter và pagination
+   * @returns Danh sách máy tính với thông tin đầy đủ và pagination
+   */
+  async getComputersWithFilter(filterDto: GetComputersFilterDto) {
+    const {
+      search,
+      status,
+      building,
+      floor,
+      roomName,
+      roomId,
+      categoryName,
+      page = 1,
+      limit = 12,
+      sortBy = "machineLabel",
+      sortOrder = "ASC",
+    } = filterDto;
+
+    // Build query with QueryBuilder
+    const queryBuilder = this.computerRepository
+      .createQueryBuilder("computer")
+      .leftJoinAndSelect("computer.asset", "asset")
+      .leftJoinAndSelect("asset.category", "category")
+      .leftJoinAndSelect("computer.room", "room")
+      .leftJoinAndSelect("computer.components", "component")
+      .where("asset.shape = :shape", { shape: "COMPUTER" })
+      .andWhere("asset.deletedAt IS NULL");
+
+    // Apply filters
+    if (search) {
+      queryBuilder.andWhere(
+        "(asset.name ILIKE :search OR asset.ktCode ILIKE :search OR asset.fixedCode ILIKE :search OR computer.machineLabel ILIKE :search)",
+        { search: `%${search}%` }
+      );
+    }
+
+    if (status && status.length > 0) {
+      queryBuilder.andWhere("asset.status IN (:...status)", { status });
+    }
+
+    if (building) {
+      queryBuilder.andWhere("room.building = :building", { building });
+    }
+
+    if (floor) {
+      queryBuilder.andWhere("room.floor = :floor", { floor });
+    }
+
+    if (roomName) {
+      queryBuilder.andWhere("room.name ILIKE :roomName", {
+        roomName: `%${roomName}%`,
+      });
+    }
+
+    if (roomId) {
+      queryBuilder.andWhere("computer.roomId = :roomId", { roomId });
+    }
+
+    if (categoryName) {
+      queryBuilder.andWhere("category.name ILIKE :categoryName", {
+        categoryName: `%${categoryName}%`,
+      });
+    }
+
+    // Apply sorting
+    const sortMapping: Record<string, string> = {
+      machineLabel: "computer.machineLabel",
+      assetName: "asset.name",
+      status: "asset.status",
+      entrydate: "asset.entrydate",
+      roomName: "room.name",
+    };
+
+    const sortField = sortMapping[sortBy] || "computer.machineLabel";
+    queryBuilder.orderBy(sortField, sortOrder);
+    queryBuilder.addOrderBy("component.componentType", "ASC");
+
+    // Get total count before pagination
+    const total = await queryBuilder.getCount();
+
+    // Apply pagination
+    const skip = (page - 1) * limit;
+    queryBuilder.skip(skip).take(limit);
+
+    // Execute query
+    const computers = await queryBuilder.getMany();
+
+    // Transform data
+    const result = computers.map((computer) => ({
+      id: computer.id,
+      machineLabel: computer.machineLabel,
+      notes: computer.notes,
+      asset: computer.asset
+        ? {
+            id: computer.asset.id,
+            ktCode: computer.asset.ktCode,
+            fixedCode: computer.asset.fixedCode,
+            name: computer.asset.name,
+            specs: computer.asset.specs,
+            status: computer.asset.status,
+            entrydate: computer.asset.entrydate,
+            origin: computer.asset.origin,
+            categoryId: computer.asset.categoryId,
+            categoryName: computer.asset.category?.name,
+          }
+        : null,
+      room: computer.room
+        ? {
+            id: computer.room.id,
+            name: computer.room.name,
+            roomNumber: computer.room.roomNumber,
+            roomCode: computer.room.roomCode,
+            building: computer.room.building,
+            floor: computer.room.floor,
+          }
+        : null,
+      components:
+        computer.components?.map((comp) => ({
+          id: comp.id,
+          componentType: comp.componentType,
+          name: comp.name,
+          componentSpecs: comp.componentSpecs,
+          serialNumber: comp.serialNumber,
+          status: comp.status,
+          installedAt: comp.installedAt,
+        })) || [],
+      componentCount: computer.components?.length || 0,
+    }));
+
+    // Calculate summary statistics
+    const allComputers = await this.computerRepository
+      .createQueryBuilder("computer")
+      .leftJoinAndSelect("computer.asset", "asset")
+      .where("asset.shape = :shape", { shape: "COMPUTER" })
+      .andWhere("asset.deletedAt IS NULL")
+      .getMany();
+
+    const byStatus: Record<string, number> = {};
+    allComputers.forEach((comp) => {
+      const status = comp.asset?.status || "UNKNOWN";
+      byStatus[status] = (byStatus[status] || 0) + 1;
+    });
+
+    return {
+      success: true,
+      message: `Lấy danh sách máy tính thành công`,
+      data: {
+        computers: result,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+        summary: {
+          totalComputers: allComputers.length,
+          byStatus,
+        },
+      },
     };
   }
 }
