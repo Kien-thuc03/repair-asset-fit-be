@@ -107,8 +107,9 @@ export class ComputerController {
       - Tìm kiếm theo tên linh kiện, tài sản, mã tài sản
       - Theo vị trí (tòa nhà, tầng, phòng)
       - Loại trừ linh kiện đã có trong đề xuất (mặc định: true)
+      - **⚠️ Chỉ lấy components có status = FAULTY (tự động filter)**
       - **Tự động lọc theo kỹ thuật viên hiện tại (từ JWT token)**
-      - **Tự động lọc theo status (ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ) - không cho phép override**
+      - **Tự động lọc theo repair status (ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ) - không cho phép override**
     `,
   })
   @ApiQuery({

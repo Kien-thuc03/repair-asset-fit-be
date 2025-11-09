@@ -9,6 +9,7 @@ import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
 import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
+import { ComponentStatus } from "../../common/shared/ComponentStatus";
 
 @Injectable()
 export class ComputerService {
@@ -402,6 +403,9 @@ export class ComputerService {
         'c."machineLabel" as machineLabel',
       ])
       .where("cc.id IS NOT NULL") // Only get repair requests with components
+      .andWhere('cc.status = :faultyStatus', {
+        faultyStatus: ComponentStatus.FAULTY,
+      }) // ⚠️ QUAN TRỌNG: Chỉ lấy components có status = FAULTY
       .andWhere('rr."assignedTechnicianId" = :technicianId', {
         technicianId: currentUser.id,
       }) // Chỉ lấy yêu cầu được phân công cho kỹ thuật viên hiện tại
