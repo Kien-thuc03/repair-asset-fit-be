@@ -5,6 +5,7 @@ import { ReplacementProposalsService } from "./replacement-proposals.service";
 import { ReplacementProposal } from "../../entities/replacement-proposal.entity";
 import { ReplacementItem } from "../../entities/replacement-item.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
+import { ComputerComponent } from "../../entities/computer-component.entity";
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { RepairRequest } from "../../entities/repair-request.entity";
       ReplacementProposal,
       ReplacementItem,
       RepairRequest,
+      ComputerComponent,
     ]),
   ],
   controllers: [ReplacementProposalsController],

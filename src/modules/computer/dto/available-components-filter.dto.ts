@@ -5,10 +5,10 @@ import { ComponentType } from "../../../common/shared/ComponentType";
 import { RepairStatus } from "../../../common/shared/RepairStatus";
 
 /**
- * DTO cho thông tin linh kiện từ yêu cầu sửa chữa
+ * DTO cho thông tin linh kiện khả dụng từ yêu cầu sửa chữa
  * Dùng để hiển thị danh sách linh kiện có thể đưa vào đề xuất thay thế
  */
-export class ComponentFromRepairDto {
+export class AvailableComponentDto {
   @ApiProperty({
     description: "ID của yêu cầu sửa chữa",
     example: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
@@ -63,21 +63,22 @@ export class ComponentFromRepairDto {
 
   @ApiProperty({
     description: "ID của tài sản (máy tính)",
-    example: "bb8d95c3-d944-4c76-aa7f-61c461f33daa",
+    example: "48b11d82-dee9-4003-b34d-d6063cbb230a",
   })
   assetId: string;
 
   @ApiProperty({
     description: "Tên tài sản",
-    example: "Máy vi tính Vostro 270MT",
+    example: "PC Dell OptiPlex 3080",
   })
   assetName: string;
 
   @ApiProperty({
     description: "Mã tài sản",
-    example: "94",
+    example: "19-0205/01",
+    nullable: true,
   })
-  assetCode: string;
+  assetCode?: string;
 
   @ApiProperty({
     description: "Tên phòng",
@@ -87,42 +88,39 @@ export class ComponentFromRepairDto {
   roomName?: string;
 
   @ApiProperty({
-    description: "Tòa nhà",
+    description: "Tên tòa nhà",
     example: "A",
     nullable: true,
   })
   buildingName?: string;
 
   @ApiProperty({
-    description: "Nhãn máy (số thứ tự máy trong phòng)",
-    example: "20",
+    description: "Tầng",
+    example: "1",
+    nullable: true,
+  })
+  floor?: string;
+
+  @ApiProperty({
+    description: "Số máy/label máy",
+    example: "01",
     nullable: true,
   })
   machineLabel?: string;
 
   @ApiProperty({
-    description: "Lý do cần thay thế (từ mô tả repair request)",
-    example: "Linh kiện bị hỏng, không hoạt động",
-  })
-  reason: string;
-
-  @ApiProperty({
-    description: "Số lượng cần thay thế (mặc định 1)",
-    example: 1,
-  })
-  quantity: number;
-
-  @ApiProperty({
-    description: "Thời gian tạo yêu cầu sửa chữa",
+    description: "Ngày tạo yêu cầu sửa chữa",
+    type: "string",
+    format: "date-time",
     example: "2025-11-07T10:30:00.000Z",
   })
   createdAt: Date;
 }
 
 /**
- * DTO cho filter khi lấy danh sách linh kiện từ repair requests
+ * DTO cho filter khi lấy danh sách linh kiện khả dụng từ repair requests
  */
-export class ComponentFromRepairFilterDto {
+export class AvailableComponentsFilterDto {
   @ApiPropertyOptional({
     description: "Tìm kiếm theo mã yêu cầu sửa chữa (YCSC)",
     example: "YCSC-2025-0002",
@@ -203,7 +201,7 @@ export class ComponentFromRepairFilterDto {
   page?: number;
 
   @ApiPropertyOptional({
-    description: "Số lượng/trang",
+    description: "Số lượng mỗi trang",
     default: 10,
     example: 10,
     minimum: 1,
@@ -215,21 +213,23 @@ export class ComponentFromRepairFilterDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    description: "Trường sắp xếp",
+    description: "Sắp xếp theo trường",
     default: "createdAt",
     example: "createdAt",
+    enum: ["createdAt", "componentName", "requestCode"],
   })
   @IsOptional()
   @IsString()
   sortBy?: string;
 
   @ApiPropertyOptional({
-    description: "Thứ tự sắp xếp (ASC hoặc DESC)",
+    description: "Thứ tự sắp xếp",
     default: "DESC",
     example: "DESC",
     enum: ["ASC", "DESC"],
   })
   @IsOptional()
-  @IsEnum(["ASC", "DESC"])
+  @IsString()
   sortOrder?: "ASC" | "DESC";
 }
+

@@ -25,6 +25,7 @@ import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
 import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
 import { RepairStatus } from "src/common/shared/RepairStatus";
 import { AssetStatus } from "src/common/shared/AssetStatus";
+import { ComponentStatus } from "src/common/shared/ComponentStatus";
 import { ErrorType } from "src/common/shared/ErrorType";
 
 @Injectable()
@@ -231,10 +232,19 @@ export class RepairsService {
     // 8. Lưu vào database
     const savedRequest = await this.repairRequestRepository.save(repairRequest);
 
-    // 9. Liên kết với components nếu có
+    // 9. Liên kết với components nếu có và cập nhật trạng thái component
     if (components.length > 0) {
       savedRequest.components = components;
       await this.repairRequestRepository.save(savedRequest);
+
+      // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện thành FAULTY
+      // Các linh kiện được báo lỗi cần được đánh dấu là FAULTY
+      for (const component of components) {
+        if (component.status === ComponentStatus.INSTALLED) {
+          component.status = ComponentStatus.FAULTY;
+          await this.computerComponentRepository.save(component);
+        }
+      }
     }
 
     // 10. Cập nhật trạng thái tài sản nếu cần
