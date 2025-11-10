@@ -4,6 +4,27 @@ export class UpdateErrorTypeEnumToConstantCase1729437426000
   implements MigrationInterface
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    console.log('🔍 Checking if migration UpdateErrorTypeEnumToConstantCase has already been applied...');
+    
+    // Kiểm tra xem enum hiện tại có giá trị CONSTANT_CASE không
+    const enumValues = await queryRunner.query(`
+      SELECT enumlabel 
+      FROM pg_enum 
+      WHERE enumtypid = (
+        SELECT oid FROM pg_type WHERE typname = 'repair_requests_errortype_enum'
+      )
+      LIMIT 1
+    `);
+
+    // Nếu có giá trị và nó đã là CONSTANT_CASE (có dấu _) => đã migrate rồi
+    if (enumValues.length > 0 && enumValues[0].enumlabel.includes('_')) {
+      console.log('✅ Migration already applied - Skipping');
+      console.log(`   - Current enum value: ${enumValues[0].enumlabel} (CONSTANT_CASE format)`);
+      return;
+    }
+
+    console.log('⚙️  Applying migration...');
+
     // Bước 1: Tạo enum mới với giá trị CONSTANT_CASE
     await queryRunner.query(`
       CREATE TYPE "error_type_enum_new" AS ENUM (

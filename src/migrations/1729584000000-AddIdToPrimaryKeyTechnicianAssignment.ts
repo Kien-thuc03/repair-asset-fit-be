@@ -4,6 +4,26 @@ export class AddIdToPrimaryKeyTechnicianAssignment1729584000000 implements Migra
     name = 'AddIdToPrimaryKeyTechnicianAssignment1729584000000';
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        console.log('🔍 Checking if migration AddIdToPrimaryKeyTechnicianAssignment has already been applied...');
+        
+        // Kiểm tra xem cột id đã tồn tại chưa
+        const idColumnExists = await queryRunner.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns 
+                WHERE table_name = 'technician_assignments' 
+                AND column_name = 'id'
+            ) as exists
+        `);
+
+        // Nếu cột id đã có => đã migrate rồi (hoặc đang trong quá trình migrate)
+        if (idColumnExists[0].exists) {
+            console.log('✅ Migration already applied - Skipping');
+            console.log('   - id column: EXISTS');
+            return;
+        }
+
+        console.log('⚙️  Applying migration...');
+
         // Bước 1: Thêm cột ID mới
         await queryRunner.query(`
             ALTER TABLE "technician_assignments"

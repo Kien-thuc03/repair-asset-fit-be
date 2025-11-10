@@ -167,4 +167,32 @@ export class ReplacementProposalResponseDto {
     type: "number",
   })
   itemsCount?: number;
+
+  @ApiPropertyOptional({
+    description: "Danh sách yêu cầu sửa chữa liên quan (từ bảng proposal_repair_requests)",
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        requestCode: { type: "string" },
+        description: { type: "string" },
+        status: { type: "string" },
+        createdAt: { type: "string" },
+      },
+    },
+  })
+  repairRequests?: {
+    id: string;
+    requestCode: string;
+    description?: string;
+    status: string;
+    createdAt: Date;
+  }[];
+
+  @ApiPropertyOptional({
+    description: "Số lượng repair requests liên quan",
+    type: "number",
+  })
+  repairRequestsCount?: number;
 }

@@ -4,14 +4,18 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, Like, Between, DataSource } from "typeorm";
+import { Repository, Like, Between, DataSource, In } from "typeorm";
 import { ReplacementProposal } from "../../entities/replacement-proposal.entity";
 import { ReplacementItem } from "../../entities/replacement-item.entity";
+import { RepairRequest } from "../../entities/repair-request.entity";
+import { ComputerComponent } from "../../entities/computer-component.entity";
 import { ReplacementProposalFilterDto } from "./dto/replacement-proposal-filter.dto";
 import { ReplacementProposalResponseDto } from "./dto/replacement-proposal-response.dto";
 import { UpdateReplacementProposalStatusDto } from "./dto/update-replacement-proposal-status.dto";
 import { CreateReplacementProposalDto } from "./dto/create-replacement-proposal.dto";
 import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
+import { RepairStatus } from "../../common/shared/RepairStatus";
+import { ComponentStatus } from "../../common/shared/ComponentStatus";
 import { User } from "../../entities/user.entity";
 
 @Injectable()
@@ -21,6 +25,10 @@ export class ReplacementProposalsService {
     private replacementProposalRepository: Repository<ReplacementProposal>,
     @InjectRepository(ReplacementItem)
     private replacementItemRepository: Repository<ReplacementItem>,
+    @InjectRepository(RepairRequest)
+    private repairRequestRepository: Repository<RepairRequest>,
+    @InjectRepository(ComputerComponent)
+    private computerComponentRepository: Repository<ComputerComponent>,
     private dataSource: DataSource
   ) {}
 
@@ -63,6 +71,51 @@ export class ReplacementProposalsService {
       );
 
       await queryRunner.manager.save(items);
+
+      // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện cũ sang PENDING_REPLACEMENT
+      // Các linh kiện được đưa vào đề xuất thay thế cần được đánh dấu là đang chờ thay thế
+      const oldComponentIds = createDto.items
+        .map(item => item.oldComponentId)
+        .filter(id => id !== undefined && id !== null);
+
+      if (oldComponentIds.length > 0) {
+        const oldComponents = await queryRunner.manager.find(ComputerComponent, {
+          where: { id: In(oldComponentIds as string[]) },
+        });
+
+        for (const component of oldComponents) {
+          // Chỉ cập nhật nếu component đang ở trạng thái FAULTY
+          // Chuyển sang PENDING_REPLACEMENT để đánh dấu đang trong đề xuất
+          if (component.status === ComponentStatus.FAULTY) {
+            component.status = ComponentStatus.PENDING_REPLACEMENT;
+            await queryRunner.manager.save(component);
+            console.log(`✅ Component ${component.id} (${component.name}) status: FAULTY → PENDING_REPLACEMENT`);
+          }
+        }
+      }
+
+      // 🔥 QUAN TRỌNG: Tạo liên kết với repair requests trong bảng proposal_repair_requests
+      // Đây là bảng trung gian Many-to-Many giữa replacement_proposals và repair_requests
+      if (createDto.repairRequestIds && createDto.repairRequestIds.length > 0) {
+        // Validate: Kiểm tra tất cả repair requests có tồn tại không
+        const repairRequests = await queryRunner.manager.find(RepairRequest, {
+          where: { id: In(createDto.repairRequestIds) },
+        });
+
+        if (repairRequests.length !== createDto.repairRequestIds.length) {
+          throw new BadRequestException(
+            `Một số repair request IDs không tồn tại. Tìm thấy ${repairRequests.length}/${createDto.repairRequestIds.length}`
+          );
+        }
+
+        // Tạo liên kết Many-to-Many bằng cách gán relation
+        savedProposal.repairRequests = repairRequests;
+        await queryRunner.manager.save(savedProposal);
+
+        console.log(
+          `✅ Đã tạo liên kết với ${repairRequests.length} repair requests cho proposal ${savedProposal.proposalCode}`
+        );
+      }
 
       await queryRunner.commitTransaction();
 
@@ -135,7 +188,8 @@ export class ReplacementProposalsService {
       .leftJoinAndSelect(
         "items.newlyPurchasedComponent",
         "newlyPurchasedComponent"
-      );
+      )
+      .leftJoinAndSelect("proposal.repairRequests", "repairRequests");
 
     // Filter by proposer
     if (proposerId) {
@@ -233,6 +287,7 @@ export class ReplacementProposalsService {
         "items.oldComponent.computer",
         "items.oldComponent.computer.room",
         "items.newlyPurchasedComponent",
+        "repairRequests",
       ],
     });
 
@@ -248,6 +303,10 @@ export class ReplacementProposalsService {
   /**
    * Cập nhật trạng thái đề xuất thay thế
    */
+  /**
+   * Cập nhật trạng thái đề xuất thay thế
+   * ⚠️ Quan trọng: Khi status = ĐÃ_DUYỆT, tất cả repair requests liên quan sẽ được cập nhật thành CHỜ_THAY_THẾ
+   */
   async updateStatus(
     id: string,
     updateDto: UpdateReplacementProposalStatusDto,
@@ -255,7 +314,15 @@ export class ReplacementProposalsService {
   ): Promise<ReplacementProposalResponseDto> {
     const proposal = await this.replacementProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "teamLeadApprover", "adminVerifier"],
+      relations: [
+        "proposer",
+        "teamLeadApprover",
+        "adminVerifier",
+        "items",
+        "items.oldComponent",
+        "items.oldComponent.repairRequests",
+        "repairRequests",
+      ],
     });
 
     if (!proposal) {
@@ -298,7 +365,66 @@ export class ReplacementProposalsService {
 
     await this.replacementProposalRepository.save(proposal);
 
+    // 🔥 MỚI: Khi proposal được duyệt (ĐÃ_DUYỆT) → Cập nhật tất cả repair requests liên quan thành CHỜ_THAY_THẾ
+    if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT) {
+      await this.updateRelatedRepairRequests(proposal);
+    }
+
     return this.findOne(id);
+  }
+
+  /**
+   * Cập nhật tất cả repair requests liên quan khi proposal được duyệt
+   * @param proposal - Replacement proposal vừa được duyệt (đã load repairRequests và items.oldComponent.repairRequests)
+   */
+  private async updateRelatedRepairRequests(
+    proposal: ReplacementProposal
+  ): Promise<void> {
+    const repairRequestIds = new Set<string>();
+
+    // 🔥 CÁCH 1: Lấy từ relation trực tiếp (từ bảng proposal_repair_requests)
+    // Đây là cách CHÍNH XÁC nhất vì dựa vào bảng liên kết Many-to-Many
+    if (proposal.repairRequests && proposal.repairRequests.length > 0) {
+      proposal.repairRequests.forEach((rr) => {
+        // Chỉ cập nhật các repair request đang ĐANG_XỬ_LÝ
+        if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
+          repairRequestIds.add(rr.id);
+        }
+      });
+    }
+
+    // 🔥 CÁCH 2: Lấy từ các components (backup, nếu không có relation trực tiếp)
+    // Cách này tìm tất cả repair requests liên quan đến các component trong proposal
+    if (repairRequestIds.size === 0) {
+      for (const item of proposal.items) {
+        if (item.oldComponent?.repairRequests) {
+          item.oldComponent.repairRequests.forEach((rr) => {
+            if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
+              repairRequestIds.add(rr.id);
+            }
+          });
+        }
+      }
+    }
+
+    if (repairRequestIds.size === 0) {
+      console.warn(
+        `⚠️ Proposal ${proposal.proposalCode} không có repair requests đang ĐANG_XỬ_LÝ liên quan`
+      );
+      return;
+    }
+
+    const repairRequestIdsArray = Array.from(repairRequestIds);
+
+    // Cập nhật tất cả repair requests thành CHỜ_THAY_THẾ
+    await this.repairRequestRepository.update(
+      { id: In(repairRequestIdsArray) },
+      { status: RepairStatus.CHỜ_THAY_THẾ }
+    );
+
+    console.log(
+      `✅ Đã cập nhật ${repairRequestIdsArray.length} repair requests sang status CHỜ_THAY_THẾ cho proposal ${proposal.proposalCode}`
+    );
   }
 
   /**
@@ -316,12 +442,14 @@ export class ReplacementProposalsService {
         "items",
         "items.oldComponent",
         "items.newlyPurchasedComponent",
+        "repairRequests",
       ],
       order: { createdAt: "DESC" },
     });
 
     return proposals.map((proposal) => this.mapToResponseDto(proposal));
   }
+
 
   /**
    * Validate status transition
@@ -448,6 +576,14 @@ export class ReplacementProposalsService {
         };
       }),
       itemsCount: proposal.items?.length || 0,
+      repairRequests: proposal.repairRequests?.map((rr) => ({
+        id: rr.id,
+        requestCode: rr.requestCode,
+        description: rr.description,
+        status: rr.status,
+        createdAt: rr.createdAt,
+      })),
+      repairRequestsCount: proposal.repairRequests?.length || 0,
     };
   }
 }

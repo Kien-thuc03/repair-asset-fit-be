@@ -4,6 +4,37 @@ export class ConvertErrorTypeToEnum1729437425000 implements MigrationInterface {
   name = 'ConvertErrorTypeToEnum1729437425000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    console.log('🔍 Checking if migration ConvertErrorTypeToEnum has already been applied...');
+    
+    // Kiểm tra xem error_types table còn tồn tại không
+    const errorTypesExists = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'error_types'
+      ) as exists
+    `);
+
+    // Kiểm tra xem errorType column đã là enum chưa
+    const errorTypeIsEnum = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'repair_requests' 
+        AND column_name = 'errorType'
+        AND data_type = 'USER-DEFINED'
+      ) as exists
+    `);
+
+    // Nếu error_types không tồn tại VÀ errorType đã là enum => migration đã chạy rồi
+    if (!errorTypesExists[0].exists && errorTypeIsEnum[0].exists) {
+      console.log('✅ Migration already applied - Skipping');
+      console.log('   - error_types table: NOT EXISTS (correct)');
+      console.log('   - errorType column: IS ENUM (correct)');
+      return;
+    }
+
+    console.log('⚙️  Applying migration...');
+
     // 1. Tạo enum type mới
     await queryRunner.query(`
       CREATE TYPE "error_type_enum" AS ENUM (

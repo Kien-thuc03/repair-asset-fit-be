@@ -29,6 +29,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
 import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
+import { RepairStatus } from "../../common/shared/RepairStatus";
 
 @ApiTags("Replacement Proposals")
 @Controller("api/v1/replacement-proposals")
@@ -85,6 +86,9 @@ export class ReplacementProposalsController {
                 "RAM hiện tại (8GB) gặp lỗi Blue Screen thường xuyên, không đủ dung lượng cho phần mềm thiết kế",
             },
           ],
+          repairRequestIds: [
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          ],
         },
       },
       "multiple-components": {
@@ -112,6 +116,10 @@ export class ReplacementProposalsController {
               reason:
                 "SSD 256GB quá nhỏ, cần nâng cấp lên 1TB để lưu trữ dự án",
             },
+          ],
+          repairRequestIds: [
+            "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+            "c3d4e5f6-a7b8-9012-cdef-123456789012",
           ],
         },
       },

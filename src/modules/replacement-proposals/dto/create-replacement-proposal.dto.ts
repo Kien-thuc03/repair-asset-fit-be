@@ -6,6 +6,7 @@ import {
   IsArray,
   ValidateNested,
   ArrayMinSize,
+  IsUUID,
 } from "class-validator";
 import { CreateReplacementItemDto } from "./create-replacement-item.dto";
 
@@ -30,4 +31,14 @@ export class CreateReplacementProposalDto {
   @ValidateNested({ each: true })
   @Type(() => CreateReplacementItemDto)
   items: CreateReplacementItemDto[];
+
+  @ApiPropertyOptional({
+    description: "Danh sách ID các yêu cầu sửa chữa liên quan (để tạo liên kết trong bảng proposal_repair_requests)",
+    type: [String],
+    example: ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true, message: "Mỗi repairRequestId phải là UUID hợp lệ" })
+  repairRequestIds?: string[];
 }
