@@ -302,7 +302,7 @@ export class ComputerController {
             componentSpecs: "Wireless Mouse 4000 DPI",
             assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
             assetName: "PC ASUS VivoBook",
-            assetCode: "19-0210/01",
+            ktCode: "19-0210/01",
             roomName: "A01.03",
             buildingName: "A",
             floor: "1",

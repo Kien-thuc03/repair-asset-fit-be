@@ -1,6 +1,7 @@
 export enum ComponentStatus {
-  INSTALLED = 'INSTALLED',
-  FAULTY = 'FAULTY',
-  REMOVED = 'REMOVED',
-  IN_STOCK = 'IN_STOCK',
+  INSTALLED = 'INSTALLED', // Đã lắp đặt
+  FAULTY = 'FAULTY', // Có lỗi
+  PENDING_REPLACEMENT = 'PENDING_REPLACEMENT', // Chờ thay thế
+  REMOVED = 'REMOVED', // Đã bị xóa
+  IN_STOCK = 'IN_STOCK', // Đang trong kho
 }

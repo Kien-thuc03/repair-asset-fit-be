@@ -78,7 +78,7 @@ export class AvailableComponentDto {
     example: "19-0205/01",
     nullable: true,
   })
-  assetCode?: string;
+  ktCode?: string;
 
   @ApiProperty({
     description: "Tên phòng",

@@ -72,8 +72,8 @@ export class ReplacementProposalsService {
 
       await queryRunner.manager.save(items);
 
-      // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện cũ
-      // Các linh kiện được đưa vào đề xuất thay thế cần được đánh dấu status phù hợp
+      // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện cũ sang PENDING_REPLACEMENT
+      // Các linh kiện được đưa vào đề xuất thay thế cần được đánh dấu là đang chờ thay thế
       const oldComponentIds = createDto.items
         .map(item => item.oldComponentId)
         .filter(id => id !== undefined && id !== null);
@@ -85,10 +85,11 @@ export class ReplacementProposalsService {
 
         for (const component of oldComponents) {
           // Chỉ cập nhật nếu component đang ở trạng thái FAULTY
-          // Không cập nhật nếu đã REMOVED
+          // Chuyển sang PENDING_REPLACEMENT để đánh dấu đang trong đề xuất
           if (component.status === ComponentStatus.FAULTY) {
-            component.status = ComponentStatus.IN_STOCK;
+            component.status = ComponentStatus.PENDING_REPLACEMENT;
             await queryRunner.manager.save(component);
+            console.log(`✅ Component ${component.id} (${component.name}) status: FAULTY → PENDING_REPLACEMENT`);
           }
         }
       }

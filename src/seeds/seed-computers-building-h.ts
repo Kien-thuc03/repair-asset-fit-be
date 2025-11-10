@@ -26,7 +26,7 @@ const COMPUTERS_PER_ROOM = 10; // Mỗi phòng 10 máy
 const COMPUTER_CATEGORY_NAME = "Máy tính"; // Tên category cho máy tính
 
 // ========== HELPER FUNCTIONS ==========
-function generateAssetCode(index: number): {
+function generatektCode(index: number): {
   ktCode: string;
   fixedCode: string;
 } {
@@ -136,7 +136,7 @@ async function seedComputersBuildingH() {
     const assetCountResult = await queryRunner.manager.query(
       `SELECT COUNT(*) as count FROM assets WHERE deleted_at IS NULL`
     );
-    let assetCodeCounter = parseInt(assetCountResult[0].count) + 1;
+    let ktCodeCounter = parseInt(assetCountResult[0].count) + 1;
 
     // ========== STEP 5: Tạo computers cho từng phòng ==========
     console.log("🏗️  Creating computers for each room...\n");
@@ -166,7 +166,7 @@ async function seedComputersBuildingH() {
           }
 
           // ========== STEP 5.1: Tạo Asset mới cho máy tính ==========
-          const { ktCode, fixedCode } = generateAssetCode(assetCodeCounter++);
+          const { ktCode, fixedCode } = generatektCode(ktCodeCounter++);
 
           const assetResult = await queryRunner.manager.query(
             `INSERT INTO assets (
