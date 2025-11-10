@@ -547,9 +547,15 @@ export class RepairsService {
       this.validateStatusTransition(repairRequest.status, updateDto.status);
     }
 
-    // Cập nhật thông tin
+    // Cập nhật thông tin (chỉ update những field có giá trị thực sự)
     const { componentIds, ...dataToUpdate } = updateDto;
-    Object.assign(repairRequest, dataToUpdate);
+    
+    // Chỉ assign những properties không phải undefined để tránh ghi đè null
+    Object.keys(dataToUpdate).forEach(key => {
+      if (dataToUpdate[key] !== undefined) {
+        repairRequest[key] = dataToUpdate[key];
+      }
+    });
 
     // Cập nhật timestamp tương ứng với status
     if (updateDto.status) {
