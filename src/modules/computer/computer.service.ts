@@ -557,13 +557,14 @@ export class ComputerService {
       sortOrder = "ASC",
     } = filterDto;
 
-    // Build query with QueryBuilder
+    // Step 1: Query computers WITHOUT components join để pagination chính xác
+    // Lấy bảng computers làm trung tâm
     const queryBuilder = this.computerRepository
       .createQueryBuilder("computer")
       .leftJoinAndSelect("computer.asset", "asset")
       .leftJoinAndSelect("asset.category", "category")
       .leftJoinAndSelect("computer.room", "room")
-      .leftJoinAndSelect("computer.components", "component")
+      // ❌ KHÔNG join components ở đây để tránh duplicate rows
       .where("asset.shape = :shape", { shape: "COMPUTER" })
       .andWhere("asset.deletedAt IS NULL");
 
@@ -614,49 +615,74 @@ export class ComputerService {
 
     const sortField = sortMapping[sortBy] || "computer.machineLabel";
     queryBuilder.orderBy(sortField, sortOrder);
-    queryBuilder.addOrderBy("component.componentType", "ASC");
 
     // Get total count before pagination
     const total = await queryBuilder.getCount();
 
-    // Apply pagination
+    // Apply pagination trên computers (không bị ảnh hưởng bởi components)
     const skip = (page - 1) * limit;
     queryBuilder.skip(skip).take(limit);
 
-    // Execute query
+    // Execute query để lấy computers
     const computers = await queryBuilder.getMany();
 
-    // Transform data
-    const result = computers.map((computer) => ({
-      id: computer.id,
-      machineLabel: computer.machineLabel,
-      notes: computer.notes,
-      asset: computer.asset
-        ? {
-            id: computer.asset.id,
-            ktCode: computer.asset.ktCode,
-            fixedCode: computer.asset.fixedCode,
-            name: computer.asset.name,
-            specs: computer.asset.specs,
-            status: computer.asset.status,
-            entrydate: computer.asset.entrydate,
-            origin: computer.asset.origin,
-            categoryId: computer.asset.categoryId,
-            categoryName: computer.asset.category?.name,
-          }
-        : null,
-      room: computer.room
-        ? {
-            id: computer.room.id,
-            name: computer.room.name,
-            roomNumber: computer.room.roomNumber,
-            roomCode: computer.room.roomCode,
-            building: computer.room.building,
-            floor: computer.room.floor,
-          }
-        : null,
-      components:
-        computer.components?.map((comp) => ({
+    // Step 2: Load components cho từng computer
+    // Lấy tất cả computer IDs
+    const computerIds = computers.map((c) => c.id);
+
+    // Query components cho tất cả computers một lần
+    let componentsMap: Map<string, any[]> = new Map();
+    
+    if (computerIds.length > 0) {
+      const components = await this.componentRepository
+        .createQueryBuilder("component")
+        .where("component.computerAssetId IN (:...computerIds)", { computerIds })
+        .orderBy("component.componentType", "ASC")
+        .getMany();
+
+      // Group components by computer ID
+      components.forEach((comp) => {
+        if (!componentsMap.has(comp.computerAssetId)) {
+          componentsMap.set(comp.computerAssetId, []);
+        }
+        componentsMap.get(comp.computerAssetId)!.push(comp);
+      });
+    }
+
+    // Step 3: Transform data với components đã load
+    const result = computers.map((computer) => {
+      // Get components cho computer này từ map
+      const computerComponents = componentsMap.get(computer.id) || [];
+
+      return {
+        id: computer.id,
+        machineLabel: computer.machineLabel,
+        notes: computer.notes,
+        asset: computer.asset
+          ? {
+              id: computer.asset.id,
+              ktCode: computer.asset.ktCode,
+              fixedCode: computer.asset.fixedCode,
+              name: computer.asset.name,
+              specs: computer.asset.specs,
+              status: computer.asset.status,
+              entrydate: computer.asset.entrydate,
+              origin: computer.asset.origin,
+              categoryId: computer.asset.categoryId,
+              categoryName: computer.asset.category?.name,
+            }
+          : null,
+        room: computer.room
+          ? {
+              id: computer.room.id,
+              name: computer.room.name,
+              roomNumber: computer.room.roomNumber,
+              roomCode: computer.room.roomCode,
+              building: computer.room.building,
+              floor: computer.room.floor,
+            }
+          : null,
+        components: computerComponents.map((comp) => ({
           id: comp.id,
           componentType: comp.componentType,
           name: comp.name,
@@ -664,9 +690,10 @@ export class ComputerService {
           serialNumber: comp.serialNumber,
           status: comp.status,
           installedAt: comp.installedAt,
-        })) || [],
-      componentCount: computer.components?.length || 0,
-    }));
+        })),
+        componentCount: computerComponents.length,
+      };
+    });
 
     // Calculate summary statistics
     const allComputers = await this.computerRepository
