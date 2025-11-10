@@ -122,8 +122,7 @@ export class RepairsController {
       1. Ghi nhận thông tin lỗi (asset, description, errorType, components/software)
       2. Thực hiện xử lý trực tiếp tại hiện trường
       3. Ghi nhận kết quả xử lý (resolutionNotes)
-      4. Status luôn là ĐANG_XỬ_LÝ (trừ khi finalStatus = ĐÃ_HOÀN_THÀNH)
-      5. Nếu cần thay thế → Lập phiếu đề xuất → Khi được duyệt → Status tự động chuyển sang CHỜ_THAY_THẾ
+      4. Chọn trạng thái cuối: ĐÃ_HOÀN_THÀNH, CHỜ_THAY_THẾ, hoặc ĐANG_XỬ_LÝ (mặc định)
       
       **Các kết quả xử lý:**
       
@@ -140,11 +139,20 @@ export class RepairsController {
       - Ví dụ: Thay cáp VGA, làm sạch tiếp xúc RAM, vặn chặt ốc
       - Asset status tự động chuyển từ DAMAGED → IN_USE
       
-      B.2. **Cần thay thế linh kiện:** ⚠️ MỚI
-      - KHÔNG set finalStatus (hoặc để undefined)
-      - Status tự động = \`ĐANG_XỬ_LÝ\`
+      B.2. **Cần thay thế linh kiện:** 🔥 ĐÃ CẬP NHẬT
+      - finalStatus = \`CHỜ_THAY_THẾ\`
+      - Repair request status = \`CHỜ_THAY_THẾ\` (ngay lập tức)
       - Bắt buộc có \`componentIds\` (linh kiện cần thay thế)
-      - Sau đó: Lập phiếu đề xuất thay thế → Khi được duyệt → Status tự động chuyển sang CHỜ_THAY_THẾ
+      - Component status = \`FAULTY\` (giữ nguyên, CHƯA chuyển PENDING_REPLACEMENT)
+      - Asset status = \`DAMAGED\` (giữ nguyên)
+      
+      **Flow tiếp theo:**
+      1. Kỹ thuật viên lập phiếu đề xuất thay thế
+      2. → Component status: FAULTY → PENDING_REPLACEMENT (khi tạo proposal)
+      3. Tổ trưởng duyệt proposal
+      4. Thay thế linh kiện xong
+      5. → Repair request: CHỜ_THAY_THẾ → ĐÃ_HOÀN_THÀNH
+      6. → Component mới: INSTALLED
       
       **C. Chỉ ghi nhận lỗi (không xử lý ngay):**
       - Không cung cấp \`finalStatus\` và \`resolutionNotes\`
@@ -154,8 +162,8 @@ export class RepairsController {
       **Validation:**
       - Kiểm tra component/software không đang trong repair request khác chưa hoàn thành
       - Lỗi phần mềm chỉ có thể finalStatus = ĐÃ_HOÀN_THÀNH
-      - finalStatus chỉ cho phép ĐÃ_HOÀN_THÀNH (không cho phép CHỜ_THAY_THẾ)
-      - Có finalStatus = ĐÃ_HOÀN_THÀNH bắt buộc phải có resolutionNotes
+      - finalStatus chỉ cho phép ĐÃ_HOÀN_THÀNH hoặc CHỜ_THAY_THẾ
+      - Có finalStatus bắt buộc phải có resolutionNotes
     `,
   })
   @ApiBody({ type: CreateAndProcessRepairRequestDto })
@@ -174,12 +182,12 @@ export class RepairsController {
           value: {
             statusCode: 400,
             message:
-              "finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH. Nếu cần thay thế linh kiện, không set finalStatus (sẽ tự động set ĐANG_XỬ_LÝ và sau đó chuyển sang CHỜ_THAY_THẾ khi phiếu đề xuất được duyệt).",
+              "finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH hoặc CHỜ_THAY_THẾ",
             error: "Bad Request",
           },
         },
         missingResolutionNotes: {
-          summary: "Thiếu ghi chú xử lý khi ĐÃ_HOÀN_THÀNH",
+          summary: "Thiếu ghi chú xử lý khi có finalStatus",
           value: {
             statusCode: 400,
             message:

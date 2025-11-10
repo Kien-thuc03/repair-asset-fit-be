@@ -1620,8 +1620,9 @@ export class RepairsService {
         requestToUpdate.resolutionNotes = createDto.resolutionNotes;
       }
 
-      // Nếu finalStatus = ĐÃ_HOÀN_THÀNH → Set completedAt và update asset status
+      // Xử lý theo finalStatus
       if (createDto.finalStatus === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+        // Nếu finalStatus = ĐÃ_HOÀN_THÀNH → Set completedAt và update asset status
         requestToUpdate.status = RepairStatus.ĐÃ_HOÀN_THÀNH;
         requestToUpdate.completedAt = new Date();
 
@@ -1631,6 +1632,17 @@ export class RepairsService {
           asset.status = AssetStatus.IN_USE;
           await queryRunner.manager.save(asset);
         }
+      } else if (createDto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
+        // 🔥 Nếu finalStatus = CHỜ_THAY_THẾ → Chuyển sang status CHỜ_THAY_THẾ ngay
+        requestToUpdate.status = RepairStatus.CHỜ_THAY_THẾ;
+        // Không set completedAt vì chưa hoàn thành
+        // Asset status vẫn giữ DAMAGED vì cần thay thế linh kiện
+        
+        // ⚠️ LƯU Ý: KHÔNG cập nhật component status ở đây!
+        // Component status chỉ chuyển sang PENDING_REPLACEMENT khi:
+        // 1. Kỹ thuật viên TẠO replacement proposal
+        // 2. Trong replacement-proposals.service.ts -> create() method
+        // Lý do: Phải có phiếu đề xuất chính thức mới đánh dấu component đang chờ thay thế
       }
 
       await queryRunner.manager.save(requestToUpdate);
@@ -1645,7 +1657,7 @@ export class RepairsService {
         createDto.resolutionNotes || "Kỹ thuật viên xử lý ngay tại hiện trường"
       );
 
-      // Nếu hoàn thành luôn, ghi thêm log
+      // Ghi log tùy theo finalStatus
       if (createDto.finalStatus === RepairStatus.ĐÃ_HOÀN_THÀNH) {
         await this.createRepairLog(
           repairRequest.id,
@@ -1654,6 +1666,16 @@ export class RepairsService {
           RepairStatus.ĐANG_XỬ_LÝ,
           RepairStatus.ĐÃ_HOÀN_THÀNH,
           createDto.resolutionNotes || "Đã xử lý xong"
+        );
+      } else if (createDto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
+        // 🔥 Ghi log khi chuyển sang CHỜ_THAY_THẾ
+        await this.createRepairLog(
+          repairRequest.id,
+          currentUser,
+          "Linh kiện cần thay thế",
+          RepairStatus.ĐANG_XỬ_LÝ,
+          RepairStatus.CHỜ_THAY_THẾ,
+          createDto.resolutionNotes || "Linh kiện không thể sửa chữa, cần thay thế"
         );
       }
 
@@ -1682,19 +1704,19 @@ export class RepairsService {
   private validateCreateAndProcess(
     dto: CreateAndProcessRepairRequestDto
   ): void {
-    // 1. Validate: finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH hoặc không set (default ĐANG_XỬ_LÝ)
+    // 1. Validate: finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH, CHỜ_THAY_THẾ hoặc không set (default ĐANG_XỬ_LÝ)
     if (dto.finalStatus) {
-      const allowedStatuses = [RepairStatus.ĐÃ_HOÀN_THÀNH];
+      const allowedStatuses = [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.CHỜ_THAY_THẾ];
       if (!allowedStatuses.includes(dto.finalStatus)) {
         throw new BadRequestException(
-          `finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH. Nếu cần thay thế linh kiện, không set finalStatus (sẽ tự động set ĐANG_XỬ_LÝ và sau đó chuyển sang CHỜ_THAY_THẾ khi phiếu đề xuất được duyệt).`
+          `finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH hoặc CHỜ_THAY_THẾ`
         );
       }
 
-      // Nếu có finalStatus = ĐÃ_HOÀN_THÀNH thì bắt buộc phải có resolutionNotes
+      // Nếu có finalStatus thì bắt buộc phải có resolutionNotes
       if (!dto.resolutionNotes) {
         throw new BadRequestException(
-          "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái ĐÃ_HOÀN_THÀNH"
+          "Bắt buộc phải nhập ghi chú xử lý (resolutionNotes) khi chọn trạng thái cuối cùng"
         );
       }
     }

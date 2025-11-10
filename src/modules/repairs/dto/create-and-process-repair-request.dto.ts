@@ -34,21 +34,32 @@ export class CreateAndProcessRepairRequestDto extends CreateRepairRequestDto {
   @ApiPropertyOptional({
     description: `Trạng thái cuối cùng sau khi xử lý lỗi.
     
-    ⚠️ CHỈ CHO PHÉP:
-    - ĐÃ_HOÀN_THÀNH: Lỗi đã được sửa chữa thành công (áp dụng cho cả lỗi phần mềm và phần cứng)
+    ✅ CÁC TRẠNG THÁI CHO PHÉP:
+    - ĐÃ_HOÀN_THÀNH: Lỗi đã được sửa chữa thành công tại chỗ
+    - CHỜ_THAY_THẾ: Linh kiện không thể sửa, cần thay thế (kỹ thuật viên đã ghi nhận)
     
-    ❌ KHÔNG CHO PHÉP CHỜ_THAY_THẾ:
-    - Nếu cần thay thế linh kiện: KHÔNG set finalStatus (để mặc định ĐANG_XỬ_LÝ)
-    - Sau khi lập phiếu đề xuất thay thế và được duyệt, status sẽ tự động chuyển sang CHỜ_THAY_THẾ
+    📝 FLOW KHI CHỌN CHỜ_THAY_THẾ:
+    1. Ghi nhận "Cần thay thế" → Repair status = CHỜ_THAY_THẾ
+       ⚠️ Component vẫn giữ status FAULTY (CHƯA chuyển PENDING_REPLACEMENT)
+    2. Kỹ thuật viên lập phiếu đề xuất thay thế
+       → Component status: FAULTY → PENDING_REPLACEMENT (khi tạo proposal)
+    3. Tổ trưởng duyệt đề xuất
+    4. Thay thế linh kiện xong
+    5. → Repair status: CHỜ_THAY_THẾ → ĐÃ_HOÀN_THÀNH
     
-    Nếu không cung cấp finalStatus, repair request sẽ có status ĐANG_XỬ_LÝ (để chờ lập phiếu đề xuất)`,
-    enum: [RepairStatus.ĐÃ_HOÀN_THÀNH],
+    📝 FLOW KHI CHỌN ĐÃ_HOÀN_THÀNH:
+    1. Sửa xong → finalStatus = ĐÃ_HOÀN_THÀNH
+    2. → Asset status: DAMAGED → IN_USE
+    3. → completedAt = now
+    
+    Nếu không cung cấp finalStatus, repair request sẽ có status ĐANG_XỬ_LÝ`,
+    enum: [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.CHỜ_THAY_THẾ],
     example: RepairStatus.ĐÃ_HOÀN_THÀNH,
   })
   @IsOptional()
-  @IsEnum([RepairStatus.ĐÃ_HOÀN_THÀNH], {
+  @IsEnum([RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.CHỜ_THAY_THẾ], {
     message:
-      'Trạng thái cuối cùng chỉ có thể là ĐÃ_HOÀN_THÀNH. Nếu cần thay thế linh kiện, không set finalStatus.',
+      'Trạng thái cuối cùng chỉ có thể là ĐÃ_HOÀN_THÀNH hoặc CHỜ_THAY_THẾ',
   })
-  finalStatus?: RepairStatus.ĐÃ_HOÀN_THÀNH;
+  finalStatus?: RepairStatus.ĐÃ_HOÀN_THÀNH | RepairStatus.CHỜ_THAY_THẾ;
 }
