@@ -9,6 +9,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, SelectQueryBuilder, In } from "typeorm";
 import { plainToInstance } from "class-transformer";
 import { RepairRequest } from "src/entities/repair-request.entity";
+import { RepairLog } from "src/entities/repair-log.entity";
 import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
@@ -33,6 +34,8 @@ export class RepairsService {
   constructor(
     @InjectRepository(RepairRequest)
     private readonly repairRequestRepository: Repository<RepairRequest>,
+    @InjectRepository(RepairLog)
+    private readonly repairLogRepository: Repository<RepairLog>,
     @InjectRepository(Asset)
     private readonly assetRepository: Repository<Asset>,
     @InjectRepository(User)
@@ -290,7 +293,17 @@ export class RepairsService {
       ],
     });
 
-    // 13. Transform và trả về DTO
+    // 13. Ghi log: Tạo yêu cầu sửa chữa mới
+    await this.createRepairLog(
+      savedRequest.id,
+      currentUser,
+      "Tạo yêu cầu sửa chữa",
+      undefined,
+      RepairStatus.CHỜ_TIẾP_NHẬN,
+      `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode})`
+    );
+
+    // 14. Transform và trả về DTO
     return this.transformToResponseDto(fullRequest);
   }
 
@@ -517,6 +530,9 @@ export class RepairsService {
       throw new ForbiddenException("Bạn không có quyền cập nhật yêu cầu này");
     }
 
+    // Lưu trạng thái cũ để ghi log
+    const oldStatus = repairRequest.status;
+
     // Tự động gán kỹ thuật viên khi chuyển sang ĐÃ_TIẾP_NHẬN
     if (
       updateDto.status === RepairStatus.ĐÃ_TIẾP_NHẬN &&
@@ -573,6 +589,18 @@ export class RepairsService {
         "components",
       ],
     });
+
+    // Ghi log nếu có thay đổi status hoặc thông tin quan trọng
+    if (updateDto.status && updateDto.status !== oldStatus) {
+      await this.createRepairLog(
+        id,
+        currentUser,
+        "Cập nhật trạng thái",
+        oldStatus,
+        updateDto.status,
+        updateDto.resolutionNotes || "Cập nhật thông tin yêu cầu sửa chữa"
+      );
+    }
 
     return this.transformToResponseDto(fullRequest);
   }
@@ -683,10 +711,21 @@ export class RepairsService {
       );
     }
 
+    const oldStatus = repairRequest.status;
     repairRequest.status = RepairStatus.ĐÃ_TIẾP_NHẬN;
     repairRequest.acceptedAt = new Date();
 
     await this.repairRequestRepository.save(repairRequest);
+
+    // Ghi log
+    await this.createRepairLog(
+      id,
+      currentUser,
+      "Tiếp nhận yêu cầu sửa chữa",
+      oldStatus,
+      RepairStatus.ĐÃ_TIẾP_NHẬN,
+      `Kỹ thuật viên ${currentUser.fullName} đã tiếp nhận yêu cầu`
+    );
 
     return this.findOne(id);
   }
@@ -897,6 +936,7 @@ export class RepairsService {
     }
 
     // Tự động gán và bắt đầu xử lý
+    const oldStatus = repairRequest.status;
     repairRequest.assignedTechnicianId = currentUser.id;
     repairRequest.status = RepairStatus.ĐANG_XỬ_LÝ;
     repairRequest.resolutionNotes = startDto.processingNotes;
@@ -910,6 +950,16 @@ export class RepairsService {
     }
 
     await this.repairRequestRepository.save(repairRequest);
+
+    // Ghi log
+    await this.createRepairLog(
+      id,
+      currentUser,
+      "Bắt đầu xử lý yêu cầu",
+      oldStatus,
+      RepairStatus.ĐANG_XỬ_LÝ,
+      startDto.processingNotes || `Kỹ thuật viên ${currentUser.fullName} bắt đầu xử lý`
+    );
 
     return this.findOne(id);
   }
@@ -997,6 +1047,7 @@ export class RepairsService {
       );
     }
 
+    const oldStatus = repairRequest.status;
     repairRequest.status = RepairStatus.ĐÃ_HOÀN_THÀNH;
     repairRequest.resolutionNotes = resolutionNotes;
     repairRequest.completedAt = new Date();
@@ -1008,6 +1059,16 @@ export class RepairsService {
     }
 
     await this.repairRequestRepository.save(repairRequest);
+
+    // Ghi log
+    await this.createRepairLog(
+      id,
+      currentUser,
+      "Hoàn thành sửa chữa",
+      oldStatus,
+      RepairStatus.ĐÃ_HOÀN_THÀNH,
+      resolutionNotes
+    );
 
     return this.findOne(id);
   }
@@ -1049,6 +1110,7 @@ export class RepairsService {
       throw new ForbiddenException("Bạn không có quyền hủy yêu cầu này");
     }
 
+    const oldStatus = repairRequest.status;
     repairRequest.status = RepairStatus.ĐÃ_HỦY;
     repairRequest.resolutionNotes = `ĐÃ HỦY: ${cancelReason}`;
 
@@ -1063,7 +1125,60 @@ export class RepairsService {
 
     await this.repairRequestRepository.save(repairRequest);
 
+    // Ghi log
+    await this.createRepairLog(
+      id,
+      currentUser,
+      "Hủy yêu cầu sửa chữa",
+      oldStatus,
+      RepairStatus.ĐÃ_HỦY,
+      cancelReason
+    );
+
     return this.findOne(id);
+  }
+
+  /**
+   * Lấy lịch sử repair logs của một yêu cầu sửa chữa
+   * @param repairRequestId - ID của yêu cầu sửa chữa
+   * @returns Danh sách repair logs
+   */
+  async getRepairLogs(repairRequestId: string) {
+    // Validate repair request tồn tại
+    const repairRequest = await this.repairRequestRepository.findOne({
+      where: { id: repairRequestId },
+    });
+
+    if (!repairRequest) {
+      throw new NotFoundException(
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${repairRequestId}`
+      );
+    }
+
+    // Lấy danh sách logs với thông tin actor
+    const logs = await this.repairLogRepository.find({
+      where: { repairRequestId },
+      relations: ["actor"],
+      order: { createdAt: "DESC" },
+    });
+
+    return {
+      success: true,
+      message: "Lấy lịch sử repair logs thành công",
+      data: logs.map((log) => ({
+        id: log.id,
+        action: log.action,
+        fromStatus: log.fromStatus,
+        toStatus: log.toStatus,
+        comment: log.comment,
+        createdAt: log.createdAt,
+        actor: {
+          id: log.actor.id,
+          fullName: log.actor.fullName,
+          email: log.actor.email,
+        },
+      })),
+    };
   }
 
   /**
@@ -1294,6 +1409,44 @@ export class RepairsService {
   }
 
   /**
+   * Tạo repair log entry
+   * @param repairRequestId - ID của yêu cầu sửa chữa
+   * @param actor - Người thực hiện hành động
+   * @param action - Hành động thực hiện
+   * @param fromStatus - Trạng thái trước (optional)
+   * @param toStatus - Trạng thái sau (optional)
+   * @param comment - Ghi chú (optional)
+   */
+  private async createRepairLog(
+    repairRequestId: string,
+    actor: User,
+    action: string,
+    fromStatus?: RepairStatus,
+    toStatus?: RepairStatus,
+    comment?: string
+  ): Promise<void> {
+    try {
+      const log = this.repairLogRepository.create({
+        repairRequestId,
+        actorId: actor.id,
+        action,
+        fromStatus,
+        toStatus,
+        comment,
+      });
+
+      await this.repairLogRepository.save(log);
+
+      console.log(
+        `📝 Repair Log: ${action} | ${fromStatus || ""} → ${toStatus || ""} | By: ${actor.fullName}`
+      );
+    } catch (error) {
+      console.error("❌ Lỗi khi tạo repair log:", error);
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  /**
    * Tự động phân công kỹ thuật viên phù hợp dựa trên vị trí phòng
    * - Tìm các KTV được phân công cho tầng hoặc tòa nhà
    * - Chọn KTV có ít yêu cầu đang xử lý nhất
@@ -1466,6 +1619,29 @@ export class RepairsService {
       }
 
       await queryRunner.manager.save(requestToUpdate);
+
+      // Ghi log cho transition CHỜ_TIẾP_NHẬN → ĐANG_XỬ_LÝ
+      await this.createRepairLog(
+        repairRequest.id,
+        currentUser,
+        "Tiếp nhận và bắt đầu xử lý ngay",
+        RepairStatus.CHỜ_TIẾP_NHẬN,
+        RepairStatus.ĐANG_XỬ_LÝ,
+        createDto.resolutionNotes || "Kỹ thuật viên xử lý ngay tại hiện trường"
+      );
+
+      // Nếu hoàn thành luôn, ghi thêm log
+      if (createDto.finalStatus === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+        await this.createRepairLog(
+          repairRequest.id,
+          currentUser,
+          "Hoàn thành sửa chữa",
+          RepairStatus.ĐANG_XỬ_LÝ,
+          RepairStatus.ĐÃ_HOÀN_THÀNH,
+          createDto.resolutionNotes || "Đã xử lý xong"
+        );
+      }
+
       await queryRunner.commitTransaction();
 
       console.log(

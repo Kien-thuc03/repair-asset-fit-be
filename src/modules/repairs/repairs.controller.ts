@@ -346,6 +346,44 @@ export class RepairsController {
     return this.repairsService.findAll(filter);
   }
 
+  @Get(":id/logs")
+  @ApiOperation({
+    summary: "Lấy lịch sử thay đổi (repair logs) của yêu cầu sửa chữa",
+    description: `
+      Lấy toàn bộ lịch sử thay đổi trạng thái và các hành động đã thực hiện 
+      trên yêu cầu sửa chữa.
+
+      **Thông tin trả về:**
+      - ID và nội dung hành động
+      - Trạng thái trước và sau
+      - Ghi chú/comment
+      - Thời gian thực hiện
+      - Thông tin người thực hiện (actor)
+
+      **Use cases:**
+      - Xem lịch sử xử lý yêu cầu
+      - Audit trail cho yêu cầu sửa chữa
+      - Kiểm tra ai đã thực hiện hành động gì và khi nào
+    `,
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID của yêu cầu sửa chữa",
+    format: "uuid",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy repair logs thành công",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Không tìm thấy yêu cầu sửa chữa",
+  })
+  @Permissions("PERM_VIEW_REPAIR", "RA_PERM_VIEW_REPAIR")
+  async getRepairLogs(@Param("id", ParseUUIDPipe) id: string) {
+    return this.repairsService.getRepairLogs(id);
+  }
+
   @Get(":id")
   @ApiOperation({
     summary: "Lấy chi tiết yêu cầu sửa chữa",

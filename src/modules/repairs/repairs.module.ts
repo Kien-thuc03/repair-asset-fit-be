@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { RepairsService } from "./repairs.service";
 import { RepairsController } from "./repairs.controller";
 import { RepairRequest } from "src/entities/repair-request.entity";
+import { RepairLog } from "src/entities/repair-log.entity";
 import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
@@ -16,6 +17,7 @@ import { Room } from "src/entities/room.entity";
   imports: [
     TypeOrmModule.forFeature([
       RepairRequest,
+      RepairLog,
       Asset,
       User,
       ComputerComponent,
