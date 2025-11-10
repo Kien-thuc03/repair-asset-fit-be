@@ -254,9 +254,14 @@ export class RepairsService {
       // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện thành FAULTY
       // Các linh kiện được báo lỗi cần được đánh dấu là FAULTY
       for (const component of components) {
+        // Chỉ update nếu component đang INSTALLED (chưa có vấn đề)
+        // Nếu đã FAULTY hoặc PENDING_REPLACEMENT thì giữ nguyên
         if (component.status === ComponentStatus.INSTALLED) {
           component.status = ComponentStatus.FAULTY;
           await this.computerComponentRepository.save(component);
+          console.log(`✅ [create] Component ${component.id} (${component.name}): INSTALLED → FAULTY`);
+        } else {
+          console.log(`ℹ️ [create] Component ${component.id} (${component.name}): Already ${component.status}, skip update`);
         }
       }
     }
@@ -573,9 +578,13 @@ export class RepairsService {
 
       for (const component of components) {
         // Chỉ cập nhật nếu component đang ở trạng thái INSTALLED
+        // Nếu đã FAULTY hoặc PENDING_REPLACEMENT thì giữ nguyên
         if (component.status === ComponentStatus.INSTALLED) {
           component.status = ComponentStatus.FAULTY;
           await this.computerComponentRepository.save(component);
+          console.log(`✅ [update] Component ${component.id} (${component.name}): INSTALLED → FAULTY`);
+        } else {
+          console.log(`ℹ️ [update] Component ${component.id} (${component.name}): Already ${component.status}, skip update`);
         }
       }
 

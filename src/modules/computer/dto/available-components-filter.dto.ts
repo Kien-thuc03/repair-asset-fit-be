@@ -5,35 +5,11 @@ import { ComponentType } from "../../../common/shared/ComponentType";
 import { RepairStatus } from "../../../common/shared/RepairStatus";
 
 /**
- * DTO cho thông tin linh kiện khả dụng từ yêu cầu sửa chữa
- * Dùng để hiển thị danh sách linh kiện có thể đưa vào đề xuất thay thế
+ * DTO cho thông tin linh kiện khả dụng để lập đề xuất thay thế
+ * Dùng để hiển thị danh sách TẤT CẢ linh kiện có status = FAULTY
+ * (Không giới hạn theo repair requests)
  */
 export class AvailableComponentDto {
-  @ApiProperty({
-    description: "ID của yêu cầu sửa chữa",
-    example: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
-  })
-  repairRequestId: string;
-
-  @ApiProperty({
-    description: "Mã yêu cầu sửa chữa",
-    example: "YCSC-2025-0002",
-  })
-  requestCode: string;
-
-  @ApiProperty({
-    description: "Trạng thái yêu cầu sửa chữa",
-    enum: RepairStatus,
-    example: RepairStatus.ĐÃ_TIẾP_NHẬN,
-  })
-  repairStatus: RepairStatus;
-
-  @ApiProperty({
-    description: "Mô tả vấn đề từ yêu cầu sửa chữa",
-    example: "Chuột không hoạt động, không di chuyển được con trỏ.",
-  })
-  repairDescription: string;
-
   @ApiProperty({
     description: "ID của linh kiện",
     example: "35560238-96ec-4242-9e17-be3a0e3b23cc",
@@ -60,6 +36,20 @@ export class AvailableComponentDto {
     nullable: true,
   })
   componentSpecs?: string;
+
+  @ApiProperty({
+    description: "Trạng thái linh kiện (luôn là FAULTY trong API này)",
+    example: "FAULTY",
+  })
+  componentStatus: string;
+
+  @ApiProperty({
+    description: "Ngày lắp đặt linh kiện",
+    type: "string",
+    format: "date-time",
+    nullable: true,
+  })
+  installedAt?: Date;
 
   @ApiProperty({
     description: "ID của tài sản (máy tính)",
@@ -108,13 +98,44 @@ export class AvailableComponentDto {
   })
   machineLabel?: string;
 
+  // ✅ Thông tin repair request (NULLABLE - có thể không có nếu component chưa được báo lỗi qua repair request)
   @ApiProperty({
-    description: "Ngày tạo yêu cầu sửa chữa",
+    description: "ID của yêu cầu sửa chữa liên quan (có thể null)",
+    example: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
+    nullable: true,
+  })
+  repairRequestId?: string | null;
+
+  @ApiProperty({
+    description: "Mã yêu cầu sửa chữa (có thể null)",
+    example: "YCSC-2025-0002",
+    nullable: true,
+  })
+  requestCode?: string | null;
+
+  @ApiProperty({
+    description: "Trạng thái yêu cầu sửa chữa (có thể null)",
+    enum: RepairStatus,
+    example: RepairStatus.ĐÃ_TIẾP_NHẬN,
+    nullable: true,
+  })
+  repairStatus?: RepairStatus | null;
+
+  @ApiProperty({
+    description: "Mô tả vấn đề từ yêu cầu sửa chữa (có thể null)",
+    example: "Chuột không hoạt động, không di chuyển được con trỏ.",
+    nullable: true,
+  })
+  repairDescription?: string | null;
+
+  @ApiProperty({
+    description: "Ngày tạo yêu cầu sửa chữa (có thể null)",
     type: "string",
     format: "date-time",
     example: "2025-11-07T10:30:00.000Z",
+    nullable: true,
   })
-  createdAt: Date;
+  repairCreatedAt?: Date | null;
 }
 
 /**

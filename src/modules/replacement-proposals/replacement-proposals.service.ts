@@ -94,6 +94,29 @@ export class ReplacementProposalsService {
         }
       }
 
+      // 🔥 QUAN TRỌNG: Tạo liên kết với repair requests trong bảng proposal_repair_requests
+      // Đây là bảng trung gian Many-to-Many giữa replacement_proposals và repair_requests
+      if (createDto.repairRequestIds && createDto.repairRequestIds.length > 0) {
+        // Validate: Kiểm tra tất cả repair requests có tồn tại không
+        const repairRequests = await queryRunner.manager.find(RepairRequest, {
+          where: { id: In(createDto.repairRequestIds) },
+        });
+
+        if (repairRequests.length !== createDto.repairRequestIds.length) {
+          throw new BadRequestException(
+            `Một số repair request IDs không tồn tại. Tìm thấy ${repairRequests.length}/${createDto.repairRequestIds.length}`
+          );
+        }
+
+        // Tạo liên kết Many-to-Many bằng cách gán relation
+        savedProposal.repairRequests = repairRequests;
+        await queryRunner.manager.save(savedProposal);
+
+        console.log(
+          `✅ Đã tạo liên kết với ${repairRequests.length} repair requests cho proposal ${savedProposal.proposalCode}`
+        );
+      }
+
       await queryRunner.commitTransaction();
 
       // Return the created proposal with all relations
@@ -165,7 +188,8 @@ export class ReplacementProposalsService {
       .leftJoinAndSelect(
         "items.newlyPurchasedComponent",
         "newlyPurchasedComponent"
-      );
+      )
+      .leftJoinAndSelect("proposal.repairRequests", "repairRequests");
 
     // Filter by proposer
     if (proposerId) {
@@ -263,6 +287,7 @@ export class ReplacementProposalsService {
         "items.oldComponent.computer",
         "items.oldComponent.computer.room",
         "items.newlyPurchasedComponent",
+        "repairRequests",
       ],
     });
 
@@ -296,6 +321,7 @@ export class ReplacementProposalsService {
         "items",
         "items.oldComponent",
         "items.oldComponent.repairRequests",
+        "repairRequests",
       ],
     });
 
@@ -349,22 +375,35 @@ export class ReplacementProposalsService {
 
   /**
    * Cập nhật tất cả repair requests liên quan khi proposal được duyệt
-   * @param proposal - Replacement proposal vừa được duyệt (đã load items.oldComponent.repairRequests)
+   * @param proposal - Replacement proposal vừa được duyệt (đã load repairRequests và items.oldComponent.repairRequests)
    */
   private async updateRelatedRepairRequests(
     proposal: ReplacementProposal
   ): Promise<void> {
-    // Lấy tất cả repair request IDs từ các components trong proposal
     const repairRequestIds = new Set<string>();
 
-    for (const item of proposal.items) {
-      if (item.oldComponent?.repairRequests) {
-        item.oldComponent.repairRequests.forEach((rr) => {
-          // Chỉ cập nhật các repair request đang ĐANG_XỬ_LÝ
-          if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
-            repairRequestIds.add(rr.id);
-          }
-        });
+    // 🔥 CÁCH 1: Lấy từ relation trực tiếp (từ bảng proposal_repair_requests)
+    // Đây là cách CHÍNH XÁC nhất vì dựa vào bảng liên kết Many-to-Many
+    if (proposal.repairRequests && proposal.repairRequests.length > 0) {
+      proposal.repairRequests.forEach((rr) => {
+        // Chỉ cập nhật các repair request đang ĐANG_XỬ_LÝ
+        if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
+          repairRequestIds.add(rr.id);
+        }
+      });
+    }
+
+    // 🔥 CÁCH 2: Lấy từ các components (backup, nếu không có relation trực tiếp)
+    // Cách này tìm tất cả repair requests liên quan đến các component trong proposal
+    if (repairRequestIds.size === 0) {
+      for (const item of proposal.items) {
+        if (item.oldComponent?.repairRequests) {
+          item.oldComponent.repairRequests.forEach((rr) => {
+            if (rr.status === RepairStatus.ĐANG_XỬ_LÝ) {
+              repairRequestIds.add(rr.id);
+            }
+          });
+        }
       }
     }
 
@@ -403,6 +442,7 @@ export class ReplacementProposalsService {
         "items",
         "items.oldComponent",
         "items.newlyPurchasedComponent",
+        "repairRequests",
       ],
       order: { createdAt: "DESC" },
     });
@@ -536,6 +576,14 @@ export class ReplacementProposalsService {
         };
       }),
       itemsCount: proposal.items?.length || 0,
+      repairRequests: proposal.repairRequests?.map((rr) => ({
+        id: rr.id,
+        requestCode: rr.requestCode,
+        description: rr.description,
+        status: rr.status,
+        createdAt: rr.createdAt,
+      })),
+      repairRequestsCount: proposal.repairRequests?.length || 0,
     };
   }
 }

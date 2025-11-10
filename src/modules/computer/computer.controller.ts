@@ -181,31 +181,42 @@ export class ComputerController {
 
   @Get("current-user/available-components")
   @ApiOperation({
-    summary: "Lấy danh sách linh kiện khả dụng từ yêu cầu sửa chữa để lập đề xuất thay thế",
+    summary: "Lấy danh sách TẤT CẢ linh kiện có status = FAULTY để lập đề xuất thay thế",
     description: `
-      Lấy danh sách các linh kiện từ các yêu cầu sửa chữa mà kỹ thuật viên hiện tại đảm nhận để lập đề xuất thay thế.
+      Lấy danh sách TẤT CẢ linh kiện có trạng thái FAULTY để kỹ thuật viên có thể lập đề xuất thay thế.
+      
+      **✅ THAY ĐỔI QUAN TRỌNG:**
+      - API này giờ lấy **TẤT CẢ FAULTY components** trong hệ thống
+      - **KHÔNG giới hạn** theo kỹ thuật viên hay repair requests nữa
+      - Cho phép tạo đề xuất thay thế cho bất kỳ linh kiện FAULTY nào
       
       **Mục đích:**
-      - Hiển thị danh sách linh kiện cần thay thế từ các yêu cầu sửa chữa mà kỹ thuật viên được phân công
-      - Kỹ thuật viên chỉ thấy các yêu cầu sửa chữa do mình xử lý (assignedTechnicianId)
+      - Hiển thị danh sách TẤT CẢ linh kiện bị lỗi (status = FAULTY)
       - Kỹ thuật viên có thể chọn nhiều linh kiện để tạo đề xuất thay thế hàng loạt
-      - Tự động lọc ra các linh kiện đã có trong đề xuất (tránh trùng lặp)
+      - Tự động lọc ra các linh kiện đã có trong đề xuất (status = PENDING_REPLACEMENT)
       
       **Dữ liệu trả về bao gồm:**
-      - Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật)
-      - Thông tin tài sản (máy tính) chứa linh kiện
-      - Vị trí (tòa nhà, phòng, số máy)
-      - Thông tin yêu cầu sửa chữa (mã, trạng thái, mô tả)
+      - ✅ Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật, status)
+      - ✅ Thông tin tài sản (máy tính) chứa linh kiện
+      - ✅ Vị trí (tòa nhà, phòng, tầng, số máy)
+      - ✅ Thông tin yêu cầu sửa chữa (mã, trạng thái, mô tả) - **NULLABLE nếu không có**
       
       **Tính năng lọc:**
-      - Tìm kiếm theo mã YCSC (requestCode)
+      - Tìm kiếm theo mã YCSC (requestCode) - nếu có
       - Theo loại linh kiện (CPU, RAM, GPU, v.v.)
-      - Tìm kiếm theo tên linh kiện, tài sản, mã tài sản
+      - Tìm kiếm theo tên linh kiện, tài sản, mã KT
       - Theo vị trí (tòa nhà, tầng, phòng)
       - Loại trừ linh kiện đã có trong đề xuất (mặc định: true)
-      - **⚠️ Chỉ lấy components có status = FAULTY (tự động filter)**
-      - **Tự động lọc theo kỹ thuật viên hiện tại (từ JWT token)**
-      - **Tự động lọc theo repair status (ĐÃ_TIẾP_NHẬN, ĐANG_XỬ_LÝ) - không cho phép override**
+      
+      **⚠️ AUTO FILTERS (KHÔNG THỂ OVERRIDE):**
+      - ✅ **CHỈ lấy components có status = FAULTY** (91 components)
+      - ✅ **Components với status PENDING_REPLACEMENT sẽ KHÔNG được lấy** (đã trong proposal)
+      - ✅ **Components với status INSTALLED, REMOVED, IN_STOCK cũng không được lấy**
+      
+      **Use Cases:**
+      - Kỹ thuật viên xem tất cả linh kiện bị lỗi để lập đề xuất
+      - Tạo đề xuất thay thế hàng loạt cho nhiều linh kiện cùng lúc
+      - Quản lý và theo dõi linh kiện cần thay thế trong toàn hệ thống
     `,
   })
   @ApiQuery({
@@ -292,14 +303,12 @@ export class ComputerController {
       example: {
         data: [
           {
-            repairRequestId: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
-            requestCode: "YCSC-2025-0002",
-            repairStatus: "ĐÃ_TIẾP_NHẬN",
-            repairDescription: "Chuột không hoạt động",
             componentId: "35560238-96ec-4242-9e17-be3a0e3b23cc",
             componentName: "Logitech MX Master 3",
             componentType: "MOUSE",
             componentSpecs: "Wireless Mouse 4000 DPI",
+            componentStatus: "FAULTY",
+            installedAt: "2024-01-15T10:00:00.000Z",
             assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
             assetName: "PC ASUS VivoBook",
             ktCode: "19-0210/01",
@@ -307,13 +316,18 @@ export class ComputerController {
             buildingName: "A",
             floor: "1",
             machineLabel: "01",
-            createdAt: "2025-11-07T10:30:00.000Z",
+            // Thông tin repair request (nullable - có thể null nếu component chưa có repair request)
+            repairRequestId: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
+            requestCode: "YCSC-2025-0002",
+            repairStatus: "ĐÃ_TIẾP_NHẬN",
+            repairDescription: "Chuột không hoạt động",
+            repairCreatedAt: "2025-11-07T10:30:00.000Z",
           },
         ],
-        total: 15,
+        total: 91,
         page: 1,
         limit: 10,
-        totalPages: 2,
+        totalPages: 10,
       },
     },
   })

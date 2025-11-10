@@ -380,47 +380,72 @@ export class ComputerService {
       sortOrder = "DESC",
     } = filter;
 
-    // Build the query
-    const queryBuilder = this.repairRequestRepository
-      .createQueryBuilder("rr")
-      .leftJoin("rr.components", "cc")
-      .leftJoin("rr.computerAsset", "a")
-      .leftJoin("a.computer", "c")
-      .leftJoin("a.currentRoom", "r")
+    console.log(`🔍 [getAvailableComponents] User: ${currentUser.fullName}, Filter:`, {
+      requestCode,
+      componentType,
+      search,
+      building,
+      floor,
+      roomName,
+      excludeInProposal,
+      page,
+      limit,
+    });
+
+    // ✅ THAY ĐỔI: Query trực tiếp từ computer_components thay vì từ repair_requests
+    // Lấy TẤT CẢ FAULTY components, không giới hạn theo repair requests
+    // Relationships: computer_components.computerAssetId → computers.id → assets.id → rooms.id
+    const queryBuilder = this.componentRepository
+      .createQueryBuilder("cc")
+      .leftJoin("computers", "c", 'c.id = cc."computerAssetId"') // ✅ Join với computers.id
+      .leftJoin("assets", "a", 'a.id = c."assetId"') // ✅ Join assets qua computers.assetId
+      .leftJoin("rooms", "r", 'r.id = a.current_room_id') // ✅ Join rooms qua assets.current_room_id
+      // Left join với repair_requests để lấy thông tin (nếu có)
+      .leftJoin(
+        "repair_request_components",
+        "rrc",
+        'rrc."componentId" = cc.id'
+      )
+      .leftJoin(
+        "repair_requests",
+        "rr",
+        'rr.id = rrc."repairRequestId" AND rr.status IN (:...activeStatuses)',
+        {
+          activeStatuses: [
+            RepairStatus.CHỜ_TIẾP_NHẬN,
+            RepairStatus.ĐÃ_TIẾP_NHẬN,
+            RepairStatus.ĐANG_XỬ_LÝ,
+            RepairStatus.CHỜ_THAY_THẾ,
+          ],
+        }
+      )
       .select([
-        "rr.id as repairRequestId",
-        'rr."requestCode" as requestCode',
-        "rr.status as repairStatus",
-        "rr.description as repairDescription",
-        'rr."createdAt" as createdAt',
         "cc.id as componentId",
         "cc.name as componentName",
         'cc."componentType" as componentType',
         'cc."componentSpecs" as componentSpecs',
+        "cc.status as componentStatus",
+        'cc."installedAt" as installedAt',
         "a.id as assetId",
         "a.name as assetName",
-        "a.fixed_code as ktCode",
+        'a.kt_code as ktCode',
         "r.name as roomName",
         "r.building as buildingName",
         "r.floor as floor",
         'c."machineLabel" as machineLabel',
+        // Thông tin repair request (có thể null nếu component chưa có repair request)
+        "rr.id as repairRequestId",
+        'rr."requestCode" as requestCode',
+        "rr.status as repairStatus",
+        "rr.description as repairDescription",
+        'rr."createdAt" as repairCreatedAt',
       ])
-      .where("cc.id IS NOT NULL") // Only get repair requests with components
-      .andWhere('cc.status = :faultyStatus', {
+      // ⚠️ QUAN TRỌNG: CHỈ LẤY COMPONENTS CÓ STATUS = FAULTY
+      .where("cc.status = :faultyStatus", {
         faultyStatus: ComponentStatus.FAULTY,
-      }) // ⚠️ QUAN TRỌNG: Chỉ lấy components có status = FAULTY
-      .andWhere('rr."assignedTechnicianId" = :technicianId', {
-        technicianId: currentUser.id,
-      }) // Chỉ lấy yêu cầu được phân công cho kỹ thuật viên hiện tại
-      .andWhere("rr.status IN (:...defaultStatuses)", {
-        // Luôn lấy các yêu cầu đang xử lý (không phụ thuộc filter)
-        defaultStatuses: [
-          RepairStatus.ĐÃ_TIẾP_NHẬN,
-          RepairStatus.ĐANG_XỬ_LÝ,
-        ],
       });
 
-    // Filter by request code (YCSC)
+    // Filter by request code (YCSC) - optional, có thể không có
     if (requestCode) {
       queryBuilder.andWhere('rr."requestCode" ILIKE :requestCode', {
         requestCode: `%${requestCode}%`,
@@ -434,10 +459,10 @@ export class ComputerService {
       });
     }
 
-    // Search by component name, asset name, or asset code
+    // Search by component name, asset name, or kt code
     if (search) {
       queryBuilder.andWhere(
-        "(cc.name ILIKE :search OR a.name ILIKE :search OR a.fixed_code ILIKE :search)",
+        '(cc.name ILIKE :search OR a.name ILIKE :search OR a.kt_code ILIKE :search)',
         { search: `%${search}%` }
       );
     }
@@ -457,7 +482,7 @@ export class ComputerService {
       queryBuilder.andWhere("r.name = :roomName", { roomName });
     }
 
-    // Exclude components already in replacement proposals
+    // Exclude components already in replacement proposals (status = PENDING_REPLACEMENT)
     if (excludeInProposal) {
       queryBuilder.andWhere((qb) => {
         const subQuery = qb
@@ -484,7 +509,7 @@ export class ComputerService {
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
 
     // Map sortBy to actual column names
-    let orderByField = 'rr."createdAt"';
+    let orderByField = 'cc."installedAt"';
     switch (sortField) {
       case "componentName":
         orderByField = "cc.name";
@@ -495,8 +520,11 @@ export class ComputerService {
       case "requestCode":
         orderByField = 'rr."requestCode"';
         break;
-      default:
+      case "createdAt":
         orderByField = 'rr."createdAt"';
+        break;
+      default:
+        orderByField = 'cc."installedAt"';
     }
 
     queryBuilder.orderBy(orderByField, sortOrder);
@@ -507,24 +535,41 @@ export class ComputerService {
 
     const rawResults = await queryBuilder.getRawMany();
 
+    console.log(`✅ [getAvailableComponents] Found ${rawResults.length} FAULTY components (total before pagination: ${total})`);
+    
+    // Debug: Log first few components
+    if (rawResults.length > 0) {
+      console.log('📦 Sample components:', rawResults.slice(0, 3).map(r => ({
+        id: r.componentid,
+        name: r.componentname,
+        status: r.componentstatus,
+        type: r.componenttype,
+        assetName: r.assetname,
+        requestCode: r.requestcode || 'No repair request',
+      })));
+    }
+
     // Map to DTO
     const data = rawResults.map((row) => ({
-      repairRequestId: row.repairrequestid,
-      requestCode: row.requestcode,
-      repairStatus: row.repairstatus,
-      repairDescription: row.repairdescription,
       componentId: row.componentid,
       componentName: row.componentname,
       componentType: row.componenttype,
       componentSpecs: row.componentspecs,
+      componentStatus: row.componentstatus,
+      installedAt: row.installedat,
       assetId: row.assetid,
       assetName: row.assetname,
-      ktCode: row.ktCode,
+      ktCode: row.ktcode,
       roomName: row.roomname,
       buildingName: row.buildingname,
       floor: row.floor,
       machineLabel: row.machinelabel,
-      createdAt: row.createdat,
+      // Thông tin repair request (nullable - có thể không có)
+      repairRequestId: row.repairrequestid || null,
+      requestCode: row.requestcode || null,
+      repairStatus: row.repairstatus || null,
+      repairDescription: row.repairdescription || null,
+      repairCreatedAt: row.repaircreatedat || null,
     }));
 
     return {
