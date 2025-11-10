@@ -43,6 +43,10 @@ export class ComputerController {
    */
   @Get("room/:roomId")
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy tất cả máy tính trong một phòng cụ thể",
+    description: "API lấy tất cả máy tính trong một phòng cụ thể theo roomId.",
+  })
   getComputersByRoom(@Param("roomId") roomId: string) {
     return this.computerService.getComputersByRoom(roomId);
   }

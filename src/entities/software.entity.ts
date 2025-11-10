@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Asset } from './asset.entity';
 import { SoftwareProposalItem } from './software-proposal-item.entity';
+import { ComputerSoftware } from './computer-software.entity';
 
 @Entity('software')
 export class Software {
@@ -40,4 +41,7 @@ export class Software {
 
     @OneToMany(() => SoftwareProposalItem, (item) => item.newlyAcquiredSoftware)
     proposalItems?: SoftwareProposalItem[];
+
+    @OneToMany(() => ComputerSoftware, (computerSoftware) => computerSoftware.software)
+    computerSoftware?: ComputerSoftware[];
 }

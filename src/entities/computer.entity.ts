@@ -11,6 +11,7 @@ import {
 import { Asset } from './asset.entity';
 import { Room } from './room.entity';
 import { ComputerComponent } from './computer-component.entity';
+import { ComputerSoftware } from './computer-software.entity';
 
 @Entity('computers')
 @Unique('unique_room_machine_label', ['roomId', 'machineLabel'])
@@ -41,4 +42,7 @@ export class Computer {
 
     @OneToMany(() => ComputerComponent, (component) => component.computer)
     components?: ComputerComponent[];
+
+    @OneToMany(() => ComputerSoftware, (software) => software.computer)
+    software?: ComputerSoftware[];
 }
