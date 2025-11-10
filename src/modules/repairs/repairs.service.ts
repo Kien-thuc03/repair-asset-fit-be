@@ -13,7 +13,7 @@ import { Asset } from "src/entities/asset.entity";
 import { User } from "src/entities/user.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
 import { Computer } from "src/entities/computer.entity";
-import { AssetSoftware } from "src/entities/asset-software.entity";
+import { ComputerSoftware } from "src/entities/computer-software.entity";
 import { Software } from "src/entities/software.entity";
 import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { Room } from "src/entities/room.entity";
@@ -41,8 +41,8 @@ export class RepairsService {
     private readonly computerComponentRepository: Repository<ComputerComponent>,
     @InjectRepository(Computer)
     private readonly computerRepository: Repository<Computer>,
-    @InjectRepository(AssetSoftware)
-    private readonly assetSoftwareRepository: Repository<AssetSoftware>,
+    @InjectRepository(ComputerSoftware)
+    private readonly computerSoftwareRepository: Repository<ComputerSoftware>,
     @InjectRepository(Software)
     private readonly softwareRepository: Repository<Software>,
     @InjectRepository(TechnicianAssignment)
@@ -188,19 +188,30 @@ export class RepairsService {
         );
       }
 
-      // Kiểm tra software có tồn tại và được cài đặt trong asset này không
-      const assetSoftwareList = await this.assetSoftwareRepository
-        .createQueryBuilder("asw")
-        .leftJoinAndSelect("asw.software", "s")
-        .where("asw.assetId = :assetId", { assetId: createDto.computerAssetId })
+      // Lấy computer từ assetId
+      const computer = await this.computerRepository.findOne({
+        where: { assetId: createDto.computerAssetId },
+      });
+
+      if (!computer) {
+        throw new BadRequestException(
+          "Không tìm thấy máy tính với assetId này"
+        );
+      }
+
+      // Kiểm tra software có tồn tại và được cài đặt trong computer này không
+      const computerSoftwareList = await this.computerSoftwareRepository
+        .createQueryBuilder("cs")
+        .leftJoinAndSelect("cs.software", "s")
+        .where("cs.computerId = :computerId", { computerId: computer.id })
         .andWhere("s.id IN (:...softwareIds)", {
           softwareIds: createDto.softwareIds,
         })
         .andWhere("s.deletedAt IS NULL")
         .getMany();
 
-      if (assetSoftwareList.length !== createDto.softwareIds.length) {
-        const foundSoftwareIds = assetSoftwareList.map((asw) => asw.softwareId);
+      if (computerSoftwareList.length !== createDto.softwareIds.length) {
+        const foundSoftwareIds = computerSoftwareList.map((cs) => cs.softwareId);
         const notFoundIds = createDto.softwareIds.filter(
           (id) => !foundSoftwareIds.includes(id)
         );
@@ -210,8 +221,8 @@ export class RepairsService {
       }
 
       // Thêm thông tin software vào description để theo dõi
-      const softwareNames = assetSoftwareList.map((asw) =>
-        `${asw.software.name} ${asw.software.version ? "v" + asw.software.version : ""}`.trim()
+      const softwareNames = computerSoftwareList.map((cs) =>
+        `${cs.software.name} ${cs.software.version ? "v" + cs.software.version : ""}`.trim()
       );
       createDto.description += `\n\n[Phần mềm gặp sự cố: ${softwareNames.join(", ")}]`;
     }

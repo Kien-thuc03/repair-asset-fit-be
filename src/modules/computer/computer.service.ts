@@ -5,6 +5,7 @@ import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
 import { GetComputersFilterDto } from "./dto/get-computers-filter.dto";
+import { GetComputerDetailResponseDto } from "./dto/get-computer-detail-response.dto";
 import { Computer } from "../../entities/computer.entity";
 import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
@@ -724,6 +725,163 @@ export class ComputerService {
           totalComputers: allComputers.length,
           byStatus,
         },
+      },
+    };
+  }
+
+  /**
+   * Lấy thông tin chi tiết đầy đủ của một máy tính
+   * Bao gồm: asset, room, components, software, repair summary
+   * 
+   * @param id - UUID của máy tính hoặc Asset ID
+   * @returns Thông tin chi tiết đầy đủ của máy tính
+   * @throws NotFoundException nếu không tìm thấy máy tính
+   */
+  async getComputerDetail(id: string): Promise<GetComputerDetailResponseDto> {
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      throw new NotFoundException(`ID không hợp lệ: ${id}`);
+    }
+
+    // Query computer với tất cả relations cần thiết
+    let computer = await this.computerRepository
+      .createQueryBuilder('computer')
+      .leftJoinAndSelect('computer.asset', 'asset')
+      .leftJoinAndSelect('asset.category', 'category')
+      .leftJoinAndSelect('computer.room', 'room')
+      .leftJoinAndSelect('room.unit', 'unit')
+      .leftJoinAndSelect('computer.components', 'component')
+      .leftJoinAndSelect('computer.software', 'computerSoftware')
+      .leftJoinAndSelect('computerSoftware.software', 'software')
+      .where('computer.id = :id', { id })
+      .orderBy('component.componentType', 'ASC')
+      .addOrderBy('component.installedAt', 'DESC')
+      .addOrderBy('computerSoftware.installationDate', 'DESC')
+      .getOne();
+
+    // Nếu không tìm thấy bằng computer.id, thử tìm bằng assetId
+    if (!computer) {
+      computer = await this.computerRepository
+        .createQueryBuilder('computer')
+        .leftJoinAndSelect('computer.asset', 'asset')
+        .leftJoinAndSelect('asset.category', 'category')
+        .leftJoinAndSelect('computer.room', 'room')
+        .leftJoinAndSelect('room.unit', 'unit')
+        .leftJoinAndSelect('computer.components', 'component')
+        .leftJoinAndSelect('computer.software', 'computerSoftware')
+        .leftJoinAndSelect('computerSoftware.software', 'software')
+        .where('computer.assetId = :id', { id })
+        .orderBy('component.componentType', 'ASC')
+        .addOrderBy('component.installedAt', 'DESC')
+        .addOrderBy('computerSoftware.installationDate', 'DESC')
+        .getOne();
+    }
+
+    // Kiểm tra máy tính có tồn tại không
+    if (!computer) {
+      throw new NotFoundException(`Không tìm thấy máy tính với ID: ${id}`);
+    }
+
+    // Lấy thống kê repair requests của asset này
+    const repairRequests = await this.repairRequestRepository
+      .createQueryBuilder('repair')
+      .where('repair.computerAssetId = :assetId', { assetId: computer.asset.id })
+      .select([
+        'repair.id',
+        'repair.status',
+        'repair.createdAt',
+      ])
+      .getMany();
+
+    // Tính toán repair summary
+    const repairSummary = {
+      total: repairRequests.length,
+      inProgress: repairRequests.filter(r => 
+        [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ].includes(r.status as RepairStatus)
+      ).length,
+      completed: repairRequests.filter(r => 
+        r.status === RepairStatus.ĐÃ_HOÀN_THÀNH
+      ).length,
+      lastRequestDate: repairRequests.length > 0 
+        ? repairRequests.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0].createdAt.toISOString()
+        : undefined,
+    };
+
+    // Transform components data
+    const components = computer.components?.map(comp => ({
+      id: comp.id,
+      componentType: comp.componentType,
+      name: comp.name,
+      componentSpecs: comp.componentSpecs,
+      serialNumber: comp.serialNumber,
+      status: comp.status,
+      installedAt: comp.installedAt?.toISOString(),
+      removedAt: comp.removedAt?.toISOString(),
+      notes: comp.notes,
+    })) || [];
+
+    // Transform software data
+    const software = computer.software?.map(cs => ({
+      id: cs.software.id,
+      computerSoftwareId: cs.id,
+      name: cs.software.name,
+      version: cs.software.version,
+      publisher: cs.software.publisher,
+      licenseKey: cs.licenseKey,
+      installationDate: cs.installationDate ? 
+        (typeof cs.installationDate === 'string' 
+          ? cs.installationDate 
+          : new Date(cs.installationDate).toISOString().split('T')[0]
+        ) : undefined,
+      notes: cs.notes,
+    })) || [];
+
+    // Build response
+    return {
+      success: true,
+      message: 'Lấy thông tin chi tiết máy tính thành công',
+      data: {
+        id: computer.id,
+        machineLabel: computer.machineLabel,
+        notes: computer.notes,
+        asset: {
+          id: computer.asset.id,
+          ktCode: computer.asset.ktCode,
+          fixedCode: computer.asset.fixedCode,
+          name: computer.asset.name,
+          specs: computer.asset.specs,
+          status: computer.asset.status,
+          entrydate: computer.asset.entrydate ? 
+            (typeof computer.asset.entrydate === 'string' 
+              ? computer.asset.entrydate 
+              : new Date(computer.asset.entrydate).toISOString().split('T')[0]
+            ) : '',
+          origin: computer.asset.origin,
+          categoryId: computer.asset.categoryId,
+          categoryName: computer.asset.category?.name,
+          unit: computer.asset.unit,
+          quantity: computer.asset.quantity,
+          type: computer.asset.type,
+          shape: computer.asset.shape,
+        },
+        room: computer.room ? {
+          id: computer.room.id,
+          name: computer.room.name,
+          roomNumber: computer.room.roomNumber,
+          roomCode: computer.room.roomCode,
+          building: computer.room.building,
+          floor: computer.room.floor,
+          unitId: computer.room.unitId,
+          unitName: computer.room.unit?.name,
+        } : undefined,
+        components,
+        componentCount: components.length,
+        software,
+        softwareCount: software.length,
+        repairSummary,
       },
     };
   }

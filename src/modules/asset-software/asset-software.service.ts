@@ -1,42 +1,46 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { AssetSoftware } from "src/entities/asset-software.entity";
-import { Asset } from "src/entities/asset.entity";
+import { ComputerSoftware } from "src/entities/computer-software.entity";
+import { Computer } from "src/entities/computer.entity";
 
 @Injectable()
 export class AssetSoftwareService {
   constructor(
-    @InjectRepository(AssetSoftware)
-    private readonly assetSoftwareRepository: Repository<AssetSoftware>,
-    @InjectRepository(Asset)
-    private readonly assetRepository: Repository<Asset>
+    @InjectRepository(ComputerSoftware)
+    private readonly computerSoftwareRepository: Repository<ComputerSoftware>,
+    @InjectRepository(Computer)
+    private readonly computerRepository: Repository<Computer>
   ) {}
 
   async getSoftwareByAsset(assetId: string) {
-    const asset = await this.assetRepository.findOne({
-      where: { id: assetId },
+    // Tìm computer thông qua assetId
+    const computer = await this.computerRepository.findOne({
+      where: { assetId },
+      relations: ["asset"],
     });
-    if (!asset) {
+    
+    if (!computer) {
       return {
         success: false,
-        message: "Không tìm thấy tài sản",
+        message: "Không tìm thấy máy tính với assetId này",
         statusCode: 404,
       };
     }
 
-    const assetSoftwareList = await this.assetSoftwareRepository.find({
-      where: { assetId },
+    const computerSoftwareList = await this.computerSoftwareRepository.find({
+      where: { computerId: computer.id },
       relations: ["software"],
       order: { installationDate: "DESC" },
     });
 
-    const software = assetSoftwareList.map((item) => ({
+    const software = computerSoftwareList.map((item) => ({
       softwareId: item.softwareId,
       name: item.software.name,
       version: item.software.version,
       publisher: item.software.publisher,
       installationDate: item.installationDate,
+      licenseKey: item.licenseKey,
       notes: item.notes,
     }));
 
@@ -44,8 +48,10 @@ export class AssetSoftwareService {
       success: true,
       message: "Lấy danh sách phần mềm thành công",
       data: {
-        assetId: asset.id,
-        assetName: asset.name,
+        assetId: computer.assetId,
+        computerId: computer.id,
+        assetName: computer.asset?.name,
+        machineLabel: computer.machineLabel,
         totalSoftware: software.length,
         software,
       },
@@ -53,15 +59,29 @@ export class AssetSoftwareService {
   }
 
   async getSoftwareDetail(assetId: string, softwareId: string) {
-    const assetSoftware = await this.assetSoftwareRepository.findOne({
-      where: { assetId, softwareId },
-      relations: ["asset", "software"],
+    // Tìm computer thông qua assetId
+    const computer = await this.computerRepository.findOne({
+      where: { assetId },
+      relations: ["asset"],
     });
 
-    if (!assetSoftware) {
+    if (!computer) {
       return {
         success: false,
-        message: "Không tìm thấy phần mềm trên tài sản này",
+        message: "Không tìm thấy máy tính với assetId này",
+        statusCode: 404,
+      };
+    }
+
+    const computerSoftware = await this.computerSoftwareRepository.findOne({
+      where: { computerId: computer.id, softwareId },
+      relations: ["computer", "computer.asset", "software"],
+    });
+
+    if (!computerSoftware) {
+      return {
+        success: false,
+        message: "Không tìm thấy phần mềm trên máy tính này",
         statusCode: 404,
       };
     }
@@ -70,17 +90,23 @@ export class AssetSoftwareService {
       success: true,
       message: "Lấy thông tin phần mềm thành công",
       data: {
-        assetId: assetSoftware.assetId,
-        softwareId: assetSoftware.softwareId,
-        assetName: assetSoftware.asset.name,
+        id: computerSoftware.id,
+        assetId: computer.assetId,
+        computerId: computer.id,
+        softwareId: computerSoftware.softwareId,
+        assetName: computer.asset?.name,
+        machineLabel: computer.machineLabel,
         software: {
-          id: assetSoftware.software.id,
-          name: assetSoftware.software.name,
-          version: assetSoftware.software.version,
-          publisher: assetSoftware.software.publisher,
+          id: computerSoftware.software.id,
+          name: computerSoftware.software.name,
+          version: computerSoftware.software.version,
+          publisher: computerSoftware.software.publisher,
         },
-        installationDate: assetSoftware.installationDate,
-        notes: assetSoftware.notes,
+        installationDate: computerSoftware.installationDate,
+        licenseKey: computerSoftware.licenseKey,
+        notes: computerSoftware.notes,
+        createdAt: computerSoftware.createdAt,
+        updatedAt: computerSoftware.updatedAt,
       },
     };
   }

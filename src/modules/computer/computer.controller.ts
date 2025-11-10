@@ -23,6 +23,7 @@ import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
 import { GetComputersFilterDto, GetComputersResponseDto } from "./dto/get-computers-filter.dto";
+import { GetComputerDetailResponseDto } from "./dto/get-computer-detail-response.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -49,6 +50,59 @@ export class ComputerController {
   })
   getComputersByRoom(@Param("roomId") roomId: string) {
     return this.computerService.getComputersByRoom(roomId);
+  }
+
+  /**
+   * GET /computer/:id
+   * Lấy thông tin chi tiết đầy đủ của một máy tính
+   * Bao gồm: asset, room, components, software, repair summary
+   *
+   * @param id - UUID của máy tính hoặc Asset ID
+   * @returns Thông tin chi tiết đầy đủ của máy tính
+   */
+  @Get(":id")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin chi tiết đầy đủ của một máy tính",
+    description: `
+      API lấy thông tin chi tiết đầy đủ của một máy tính theo Computer ID hoặc Asset ID.
+      
+      **Thông tin trả về:**
+      - **Computer**: ID, số máy, ghi chú
+      - **Asset**: Mã KT, mã TSCĐ, tên, thông số, trạng thái, ngày nhập, xuất xứ, danh mục
+      - **Room**: Tên phòng, mã phòng, tòa nhà, tầng, đơn vị
+      - **Components**: Danh sách linh kiện (loại, tên, thông số, serial, trạng thái, ngày lắp đặt)
+      - **Software**: Danh sách phần mềm (tên, version, publisher, license, ngày cài đặt)
+      - **Repair Summary**: Thống kê lịch sử sửa chữa (tổng số, đang xử lý, hoàn thành)
+      
+      **Đặc điểm:**
+      - Hỗ trợ tìm kiếm bằng Computer ID hoặc Asset ID
+      - Tự động join tất cả quan hệ cần thiết
+      - Sắp xếp components theo loại và ngày lắp đặt
+      - Sắp xếp software theo ngày cài đặt
+      - Tính toán thống kê repair requests
+      
+      **Use cases:**
+      - Xem chi tiết máy tính trong giao diện quản lý thiết bị
+      - Kiểm tra thông tin đầy đủ trước khi bảo trì/sửa chữa
+      - Xem lịch sử phần mềm và linh kiện của máy tính
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy thông tin chi tiết máy tính thành công",
+    type: GetComputerDetailResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Không tìm thấy máy tính với ID được cung cấp",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Chưa xác thực",
+  })
+  getComputerDetail(@Param("id") id: string) {
+    return this.computerService.getComputerDetail(id);
   }
 
   /**
