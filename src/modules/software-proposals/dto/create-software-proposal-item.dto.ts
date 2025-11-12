@@ -23,13 +23,12 @@ export class CreateSoftwareProposalItemDto {
   @ApiProperty({
     description: "Phiên bản phần mềm",
     example: "2021",
-    required: false,
     maxLength: 100,
   })
-  @IsOptional()
   @IsString({ message: "Phiên bản phải là chuỗi ký tự" })
+  @IsNotEmpty({ message: "Phiên bản không được để trống" })
   @MaxLength(100, { message: "Phiên bản không được vượt quá 100 ký tự" })
-  version?: string;
+  version: string;
 
   @ApiProperty({
     description: "Nhà sản xuất/phát hành phần mềm",

@@ -61,9 +61,24 @@ export class SoftwareProposalsController {
   @ApiBody({
     type: CreateSoftwareProposalDto,
     examples: {
+      "minimal-required": {
+        summary: "Đề xuất tối thiểu (chỉ các trường bắt buộc)",
+        description:
+          "Ví dụ với chỉ các trường bắt buộc: roomId, reason, softwareName, version",
+        value: {
+          roomId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
+          reason: "Phòng máy tính cần Microsoft Office để phục vụ giảng dạy",
+          items: [
+            {
+              softwareName: "Microsoft Office",
+              version: "2021",
+            },
+          ],
+        },
+      },
       "single-software": {
-        summary: "Đề xuất một phần mềm",
-        description: "Đề xuất Microsoft Office cho phòng máy tính",
+        summary: "Đề xuất một phần mềm (đầy đủ thông tin)",
+        description: "Đề xuất Microsoft Office với đầy đủ thông tin tùy chọn",
         value: {
           roomId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
           reason:
@@ -107,6 +122,28 @@ export class SoftwareProposalsController {
               publisher: "Autodesk",
               quantity: 20,
               licenseType: "Theo năm",
+            },
+          ],
+        },
+      },
+      "multiple-software-minimal": {
+        summary: "Đề xuất nhiều phần mềm (tối thiểu)",
+        description: "Đề xuất nhiều phần mềm chỉ với các trường bắt buộc",
+        value: {
+          roomId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
+          reason: "Cần cài đặt phần mềm thiết kế cho phòng máy",
+          items: [
+            {
+              softwareName: "Adobe Photoshop",
+              version: "2024",
+            },
+            {
+              softwareName: "Adobe Illustrator",
+              version: "2024",
+            },
+            {
+              softwareName: "AutoCAD",
+              version: "2024",
             },
           ],
         },
