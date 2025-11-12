@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -812,5 +813,91 @@ export class RepairsController {
     @Param("reporterId", ParseUUIDPipe) reporterId: string
   ): Promise<RepairRequestResponseDto[]> {
     return this.repairsService.findByReporter(reporterId);
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Xóa yêu cầu sửa chữa",
+    description: `
+      Xóa một yêu cầu sửa chữa khỏi hệ thống.
+      
+      **Quyền hạn:**
+      - Người báo lỗi (reporter): Chỉ có thể xóa yêu cầu của mình khi trạng thái là CHỜ_TIẾP_NHẬN
+      - Admin/Tổ trưởng kỹ thuật: Có thể xóa bất kỳ yêu cầu nào
+      
+      **Quy trình xóa:**
+      1. Kiểm tra quyền xóa của người dùng
+      2. Kiểm tra yêu cầu có đang liên kết với đề xuất thay thế không
+      3. Xóa tất cả repair logs liên quan
+      4. Xóa yêu cầu sửa chữa (repair_request_components tự động xóa do CASCADE)
+      5. Cập nhật trạng thái asset nếu không còn yêu cầu sửa chữa nào và không còn component lỗi
+      
+      **Lưu ý:**
+      - Không thể xóa yêu cầu đang liên kết với đề xuất thay thế (replacement proposal)
+      - Sau khi xóa, nếu asset không còn yêu cầu sửa chữa nào và không còn component lỗi, 
+        trạng thái asset sẽ tự động chuyển từ DAMAGED về IN_USE
+      - Tất cả repair logs sẽ bị xóa vĩnh viễn
+    `,
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID của yêu cầu sửa chữa cần xóa",
+    format: "uuid",
+    example: "8f0d400e-74f5-4415-a668-3eb37137bda1",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xóa yêu cầu sửa chữa thành công",
+    schema: {
+      example: {
+        message: "Xóa yêu cầu sửa chữa YCSC-2025-0001 thành công",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy yêu cầu sửa chữa",
+    schema: {
+      example: {
+        statusCode: 404,
+        message: "Không tìm thấy yêu cầu sửa chữa với ID: xxx",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: "Không có quyền xóa yêu cầu này",
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          "Bạn không có quyền xóa yêu cầu sửa chữa này. Chỉ có thể xóa yêu cầu ở trạng thái CHỜ_TIẾP_NHẬN hoặc bạn phải là Admin/Tổ trưởng.",
+        error: "Forbidden",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Yêu cầu đang liên kết với đề xuất thay thế",
+    schema: {
+      example: {
+        statusCode: 400,
+        message:
+          "Không thể xóa yêu cầu sửa chữa này vì đang liên kết với các đề xuất thay thế: DXTT-2025-0001 (ĐÃ_DUYỆT). Vui lòng hủy liên kết hoặc xóa các đề xuất trước.",
+        error: "Bad Request",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async remove(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: User
+  ): Promise<{ message: string }> {
+    return this.repairsService.remove(id, user);
   }
 }

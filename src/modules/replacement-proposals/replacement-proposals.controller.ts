@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -510,5 +511,92 @@ export class ReplacementProposalsController {
     @Param("proposerId", ParseUUIDPipe) proposerId: string
   ): Promise<ReplacementProposalResponseDto[]> {
     return this.replacementProposalsService.findByProposer(proposerId);
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Xóa đề xuất thay thế",
+    description: `
+      Xóa một đề xuất thay thế khỏi hệ thống.
+      
+      **Quyền hạn:**
+      - Người đề xuất (proposer): Chỉ có thể xóa đề xuất của mình khi trạng thái là CHỜ_TỔ_TRƯỞNG_DUYỆT hoặc ĐÃ_TỪ_CHỐI
+      - Admin/Tổ trưởng kỹ thuật: Có thể xóa bất kỳ đề xuất nào (trừ khi đã hoàn tất mua sắm)
+      
+      **Quy trình xóa:**
+      1. Kiểm tra quyền xóa của người dùng
+      2. Kiểm tra trạng thái đề xuất (không cho xóa nếu đã hoàn tất mua sắm)
+      3. Rollback component status từ PENDING_REPLACEMENT về FAULTY (nếu proposal chưa được duyệt)
+      4. Xóa tất cả replacement items liên quan
+      5. Xóa đề xuất (proposal_repair_requests tự động xóa do CASCADE)
+      
+      **Lưu ý:**
+      - Không thể xóa đề xuất đã hoàn tất mua sắm (ĐÃ_HOÀN_TẤT_MUA_SẮM)
+      - Khi xóa proposal ở trạng thái CHỜ_TỔ_TRƯỞNG_DUYỆT hoặc ĐÃ_TỪ_CHỐI, 
+        các component có status PENDING_REPLACEMENT sẽ được rollback về FAULTY
+      - Tất cả replacement items và liên kết với repair requests sẽ bị xóa
+      - proposal_repair_requests sẽ tự động xóa do CASCADE constraint
+    `,
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID của đề xuất thay thế cần xóa",
+    format: "uuid",
+    example: "a46cde68-1fe6-48ea-93a8-ce8892705c95",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xóa đề xuất thay thế thành công",
+    schema: {
+      example: {
+        message: "Xóa đề xuất thay thế DXTT-2025-0001 thành công",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy đề xuất thay thế",
+    schema: {
+      example: {
+        statusCode: 404,
+        message: "Không tìm thấy đề xuất thay thế với ID: xxx",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: "Không có quyền xóa đề xuất này",
+    schema: {
+      example: {
+        statusCode: 403,
+        message:
+          "Bạn không có quyền xóa đề xuất này. Chỉ có thể xóa đề xuất ở trạng thái CHỜ_TỔ_TRƯỞNG_DUYỆT hoặc ĐÃ_TỪ_CHỐI, hoặc bạn phải là Admin/Tổ trưởng.",
+        error: "Forbidden",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Không thể xóa đề xuất đã hoàn tất mua sắm",
+    schema: {
+      example: {
+        statusCode: 400,
+        message:
+          "Không thể xóa đề xuất đã hoàn tất mua sắm. Vui lòng liên hệ quản trị viên nếu cần điều chỉnh.",
+        error: "Bad Request",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async remove(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: User
+  ): Promise<{ message: string }> {
+    return this.replacementProposalsService.remove(id, user);
   }
 }
