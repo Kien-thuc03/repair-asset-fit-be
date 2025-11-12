@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Like, Between, DataSource, In } from "typeorm";
@@ -585,5 +586,117 @@ export class ReplacementProposalsService {
       })),
       repairRequestsCount: proposal.repairRequests?.length || 0,
     };
+  }
+
+  /**
+   * Xóa đề xuất thay thế
+   * @param id - ID của đề xuất thay thế cần xóa
+   * @param currentUser - Người dùng hiện tại
+   * @returns Thông báo xóa thành công
+   * @throws NotFoundException nếu không tìm thấy đề xuất
+   * @throws ForbiddenException nếu người dùng không có quyền xóa
+   * @throws BadRequestException nếu đề xuất đang ở trạng thái không cho phép xóa
+   */
+  async remove(
+    id: string,
+    currentUser: User
+  ): Promise<{ message: string }> {
+    // 1. Kiểm tra đề xuất có tồn tại không
+    const proposal = await this.replacementProposalRepository.findOne({
+      where: { id },
+      relations: ["items", "items.oldComponent", "repairRequests"],
+    });
+
+    if (!proposal) {
+      throw new NotFoundException(
+        `Không tìm thấy đề xuất thay thế với ID: ${id}`
+      );
+    }
+
+    // 2. Kiểm tra quyền xóa
+    // Chỉ cho phép:
+    // - Người đề xuất (proposer) xóa đề xuất của mình khi status là CHỜ_TỔ_TRƯỞNG_DUYỆT hoặc ĐÃ_TỪ_CHỐI
+    // - Admin/Tổ trưởng có thể xóa bất kỳ đề xuất nào (trừ khi đã hoàn tất mua sắm)
+    const userRoles = currentUser.roles?.map((r) => r.code) || [];
+    const isAdmin = userRoles.some(
+      (role) => role === "ADMIN" || role === "LEAD_TECHNICIAN"
+    );
+    const isProposer = proposal.proposerId === currentUser.id;
+    const canDeleteByStatus =
+      proposal.status === ReplacementStatus.CHỜ_TỔ_TRƯỞNG_DUYỆT ||
+      proposal.status === ReplacementStatus.ĐÃ_TỪ_CHỐI;
+
+    // Không cho phép xóa nếu đã hoàn tất mua sắm
+    if (proposal.status === ReplacementStatus.ĐÃ_HOÀN_TẤT_MUA_SẮM) {
+      throw new BadRequestException(
+        "Không thể xóa đề xuất đã hoàn tất mua sắm. Vui lòng liên hệ quản trị viên nếu cần điều chỉnh."
+      );
+    }
+
+    if (!isAdmin && (!isProposer || !canDeleteByStatus)) {
+      throw new ForbiddenException(
+        "Bạn không có quyền xóa đề xuất này. Chỉ có thể xóa đề xuất ở trạng thái CHỜ_TỔ_TRƯỞNG_DUYỆT hoặc ĐÃ_TỪ_CHỐI, hoặc bạn phải là Admin/Tổ trưởng."
+      );
+    }
+
+    // 3. Sử dụng transaction để đảm bảo tính nhất quán
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 3.1. Rollback component status từ PENDING_REPLACEMENT về FAULTY
+      // (nếu proposal chưa được duyệt hoặc đã bị từ chối)
+      const shouldRollbackComponentStatus =
+        proposal.status === ReplacementStatus.CHỜ_TỔ_TRƯỞNG_DUYỆT ||
+        proposal.status === ReplacementStatus.ĐÃ_TỪ_CHỐI;
+
+      if (shouldRollbackComponentStatus && proposal.items) {
+        for (const item of proposal.items) {
+          if (item.oldComponentId && item.oldComponent) {
+            const component = await queryRunner.manager.findOne(
+              ComputerComponent,
+              {
+                where: { id: item.oldComponentId },
+              }
+            );
+
+            if (
+              component &&
+              component.status === ComponentStatus.PENDING_REPLACEMENT
+            ) {
+              // Rollback về FAULTY vì proposal bị xóa
+              component.status = ComponentStatus.FAULTY;
+              await queryRunner.manager.save(component);
+              console.log(
+                `✅ Component ${component.id} (${component.name}) status: PENDING_REPLACEMENT → FAULTY (do xóa proposal)`
+              );
+            }
+          }
+        }
+      }
+
+      // 3.2. Xóa tất cả replacement items (do có NO ACTION constraint)
+      await queryRunner.manager.delete(ReplacementItem, {
+        proposalId: id,
+      });
+
+      // 3.3. Xóa proposal (proposal_repair_requests sẽ tự động xóa do CASCADE)
+      await queryRunner.manager.delete(ReplacementProposal, { id });
+
+      // 3.4. Commit transaction
+      await queryRunner.commitTransaction();
+
+      return {
+        message: `Xóa đề xuất thay thế ${proposal.proposalCode} thành công`,
+      };
+    } catch (error) {
+      // Rollback nếu có lỗi
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      // Giải phóng query runner
+      await queryRunner.release();
+    }
   }
 }
