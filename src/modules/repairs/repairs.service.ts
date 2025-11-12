@@ -1746,4 +1746,147 @@ export class RepairsService {
       }
     }
   }
+
+  /**
+   * Xóa yêu cầu sửa chữa
+   * @param id - ID của yêu cầu sửa chữa cần xóa
+   * @param currentUser - Người dùng hiện tại
+   * @returns Thông báo xóa thành công
+   * @throws NotFoundException nếu không tìm thấy yêu cầu
+   * @throws BadRequestException nếu yêu cầu đang liên kết với proposal chưa hoàn thành
+   * @throws ForbiddenException nếu người dùng không có quyền xóa
+   */
+  async remove(id: string, currentUser: User): Promise<{ message: string }> {
+    // 1. Kiểm tra yêu cầu sửa chữa có tồn tại không
+    const repairRequest = await this.repairRequestRepository.findOne({
+      where: { id },
+      relations: ["computerAsset", "components"],
+    });
+
+    if (!repairRequest) {
+      throw new NotFoundException(
+        `Không tìm thấy yêu cầu sửa chữa với ID: ${id}`
+      );
+    }
+
+    // 2. Kiểm tra quyền xóa
+    // Chỉ cho phép:
+    // - Người báo lỗi (reporter) xóa yêu cầu của mình khi status là CHỜ_TIẾP_NHẬN
+    // - Admin/Tổ trưởng có thể xóa bất kỳ yêu cầu nào
+    const userRoles = currentUser.roles?.map((r) => r.code) || [];
+    const isAdmin = userRoles.some(
+      (role) => role === "ADMIN" || role === "LEAD_TECHNICIAN"
+    );
+    const isReporter = repairRequest.reporterId === currentUser.id;
+    const canDeleteByStatus =
+      repairRequest.status === RepairStatus.CHỜ_TIẾP_NHẬN;
+
+    if (!isAdmin && (!isReporter || !canDeleteByStatus)) {
+      throw new ForbiddenException(
+        "Bạn không có quyền xóa yêu cầu sửa chữa này. Chỉ có thể xóa yêu cầu ở trạng thái CHỜ_TIẾP_NHẬN hoặc bạn phải là Admin/Tổ trưởng."
+      );
+    }
+
+    // 3. Kiểm tra xem có proposal nào đang liên kết với repair request không
+    const linkedProposals = await this.repairRequestRepository.manager.query(
+      `
+      SELECT 
+        prr."proposalId",
+        rp."proposalCode",
+        rp.status as proposal_status
+      FROM proposal_repair_requests prr
+      INNER JOIN replacement_proposals rp ON prr."proposalId" = rp.id
+      WHERE prr."repairRequestId" = $1
+      `,
+      [id]
+    );
+
+    if (linkedProposals.length > 0) {
+      const proposalCodes = linkedProposals
+        .map((p: any) => `${p.proposalCode} (${p.proposal_status})`)
+        .join(", ");
+      throw new BadRequestException(
+        `Không thể xóa yêu cầu sửa chữa này vì đang liên kết với các đề xuất thay thế: ${proposalCodes}. Vui lòng hủy liên kết hoặc xóa các đề xuất trước.`
+      );
+    }
+
+    // 4. Sử dụng transaction để đảm bảo tính nhất quán
+    const queryRunner =
+      this.repairRequestRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 4.1. Xóa tất cả repair logs (do có NO ACTION constraint)
+      await queryRunner.manager.delete(RepairLog, {
+        repairRequestId: id,
+      });
+
+      // 4.2. Xóa repair request (repair_request_components sẽ tự động xóa do CASCADE)
+      await queryRunner.manager.delete(RepairRequest, { id });
+
+      // 4.3. Kiểm tra và cập nhật trạng thái asset nếu cần
+      // Nếu không còn repair request nào cho asset này, và asset đang ở trạng thái DAMAGED,
+      // thì có thể chuyển về IN_USE (nếu asset không có vấn đề khác)
+      const remainingRepairs = await queryRunner.manager.count(RepairRequest, {
+        where: {
+          computerAssetId: repairRequest.computerAssetId,
+          status: In([
+            RepairStatus.CHỜ_TIẾP_NHẬN,
+            RepairStatus.ĐÃ_TIẾP_NHẬN,
+            RepairStatus.ĐANG_XỬ_LÝ,
+            RepairStatus.CHỜ_THAY_THẾ,
+          ]),
+        },
+      });
+
+      if (remainingRepairs === 0) {
+        const asset = await queryRunner.manager.findOne(Asset, {
+          where: { id: repairRequest.computerAssetId },
+        });
+
+        if (asset && asset.status === AssetStatus.DAMAGED) {
+          // Kiểm tra xem asset có component nào đang FAULTY không
+          const computer = await queryRunner.manager.findOne(Computer, {
+            where: { assetId: asset.id },
+          });
+
+          if (computer) {
+            const faultyComponents = await queryRunner.manager.count(
+              ComputerComponent,
+              {
+                where: {
+                  computerAssetId: computer.assetId,
+                  status: ComponentStatus.FAULTY,
+                },
+              }
+            );
+
+            // Chỉ chuyển về IN_USE nếu không còn component nào bị lỗi
+            if (faultyComponents === 0) {
+              await queryRunner.manager.update(
+                Asset,
+                { id: asset.id },
+                { status: AssetStatus.IN_USE }
+              );
+            }
+          }
+        }
+      }
+
+      // 4.4. Commit transaction
+      await queryRunner.commitTransaction();
+
+      return {
+        message: `Xóa yêu cầu sửa chữa ${repairRequest.requestCode} thành công`,
+      };
+    } catch (error) {
+      // Rollback nếu có lỗi
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      // Giải phóng query runner
+      await queryRunner.release();
+    }
+  }
 }
