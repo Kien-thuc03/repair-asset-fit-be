@@ -138,6 +138,46 @@ export class ReplacementProposalResponseDto {
     email?: string;
   };
 
+  @ApiPropertyOptional({ description: "ID quản trị viên khoa duyệt" })
+  facultyAdminApproverId?: string;
+
+  @ApiPropertyOptional({
+    description: "Thông tin quản trị viên khoa duyệt",
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      username: { type: "string" },
+      fullName: { type: "string" },
+      email: { type: "string" },
+    },
+  })
+  facultyAdminApprover?: {
+    id: string;
+    username: string;
+    fullName: string;
+    email?: string;
+  };
+
+  @ApiPropertyOptional({ description: "ID ban giám hiệu duyệt" })
+  principalApproverId?: string;
+
+  @ApiPropertyOptional({
+    description: "Thông tin ban giám hiệu duyệt",
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      username: { type: "string" },
+      fullName: { type: "string" },
+      email: { type: "string" },
+    },
+  })
+  principalApprover?: {
+    id: string;
+    username: string;
+    fullName: string;
+    email?: string;
+  };
+
   @ApiProperty({
     description: "Trạng thái đề xuất",
     enum: ReplacementStatus,
