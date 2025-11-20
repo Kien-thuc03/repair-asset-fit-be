@@ -116,6 +116,27 @@ export class RoomsService {
     });
   }
 
+  async findByUnit(unitId: string): Promise<RoomResponseDto[]> {
+    // Check if unit exists
+    const unit = await this.unitRepository.findOne({
+      where: { id: unitId },
+    });
+
+    if (!unit) {
+      throw new NotFoundException("Unit not found");
+    }
+
+    const rooms = await this.roomRepository.find({
+      where: { unitId },
+      relations: ["unit", "adjacentRooms"],
+      order: { roomCode: "ASC" },
+    });
+
+    return plainToInstance(RoomResponseDto, rooms, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   async findOne(id: string): Promise<RoomResponseDto> {
     const room = await this.roomRepository.findOne({
       where: { id },

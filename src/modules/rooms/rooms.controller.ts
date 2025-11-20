@@ -9,6 +9,8 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Query,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -16,6 +18,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { RoomsService } from "./rooms.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
@@ -61,6 +64,36 @@ export class RoomsController {
   @ApiBearerAuth()
   async findAll(): Promise<RoomResponseDto[]> {
     return this.roomsService.findAll();
+  }
+
+  @Get("unit")
+  @ApiOperation({ summary: "Get all rooms by unit ID" })
+  @ApiQuery({
+    name: "unitId",
+    required: true,
+    type: String,
+    description: "Unit ID to filter rooms",
+    format: "uuid",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Rooms retrieved successfully",
+    type: [RoomResponseDto],
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Invalid unit ID format",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Unit not found",
+  })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @ApiBearerAuth()
+  async findByUnit(
+    @Query("unitId", ParseUUIDPipe) unitId: string
+  ): Promise<RoomResponseDto[]> {
+    return this.roomsService.findByUnit(unitId);
   }
 
   @Get(":id")
