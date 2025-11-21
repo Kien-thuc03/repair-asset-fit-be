@@ -35,10 +35,6 @@ export class Software {
     @DeleteDateColumn()
     deletedAt?: Date;
 
-    // Relations
-    @ManyToMany(() => Asset, (asset) => asset.software)
-    assets?: Asset[];
-
     @OneToMany(() => SoftwareProposalItem, (item) => item.newlyAcquiredSoftware)
     proposalItems?: SoftwareProposalItem[];
 

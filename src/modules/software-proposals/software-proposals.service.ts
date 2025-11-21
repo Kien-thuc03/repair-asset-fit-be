@@ -142,7 +142,7 @@ export class SoftwareProposalsService {
   async findOne(id: string): Promise<SoftwareProposalResponseDto> {
     const proposal = await this.softwareProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "approver", "room", "room.unit", "items"],
+      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
     });
 
     if (!proposal) {
@@ -164,7 +164,7 @@ export class SoftwareProposalsService {
   ): Promise<SoftwareProposalResponseDto[]> {
     const proposals = await this.softwareProposalRepository.find({
       where: { proposerId },
-      relations: ["proposer", "approver", "room", "room.unit", "items"],
+      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
       order: {
         createdAt: "DESC",
       },
@@ -233,16 +233,17 @@ export class SoftwareProposalsService {
     // Cập nhật thông tin
     Object.assign(proposal, updateDto);
 
-    // Nếu cập nhật trạng thái thành ĐÃ_DUYỆT, ĐÃ_TỪ_CHỐI, hoặc ĐÃ_TRANG_BỊ, cập nhật approverId
+    // Auto-set approverId khi tổ trưởng duyệt hoặc từ chối
     if (
-      updateDto.status &&
-      [
-        SoftwareProposalStatus.ĐÃ_DUYỆT,
-        SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
-        SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
-      ].includes(updateDto.status)
+      updateDto.status === SoftwareProposalStatus.ĐÃ_DUYỆT ||
+      updateDto.status === SoftwareProposalStatus.ĐÃ_TỪ_CHỐI
     ) {
-      proposal.approverId = currentUser.id;
+      proposal.approverId = updateDto.approverId || currentUser.id;
+    }
+
+    // Auto-set technicianId khi kỹ thuật viên hoàn thành trang bị
+    if (updateDto.status === SoftwareProposalStatus.ĐÃ_TRANG_BỊ) {
+      proposal.technicianId = updateDto.technicianId || currentUser.id;
     }
 
     const updatedProposal =
@@ -251,7 +252,7 @@ export class SoftwareProposalsService {
     // Lấy thông tin đầy đủ với relations
     const fullProposal = await this.softwareProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "approver", "room", "room.unit", "items"],
+      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
     });
 
     return this.transformToResponseDto(fullProposal);
@@ -368,9 +369,15 @@ export class SoftwareProposalsService {
         SoftwareProposalStatus.ĐÃ_DUYỆT,
         SoftwareProposalStatus.ĐÃ_TỪ_CHỐI,
       ],
-      [SoftwareProposalStatus.ĐÃ_DUYỆT]: [SoftwareProposalStatus.ĐÃ_TRANG_BỊ],
+      [SoftwareProposalStatus.ĐÃ_DUYỆT]: [
+        SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
+      ],
       [SoftwareProposalStatus.ĐÃ_TỪ_CHỐI]: [
         SoftwareProposalStatus.CHỜ_DUYỆT, // Có thể gửi lại
+      ],
+      [SoftwareProposalStatus.ĐANG_TRANG_BỊ]: [
+        SoftwareProposalStatus.ĐÃ_TRANG_BỊ, // Hoàn thành trang bị
       ],
       [SoftwareProposalStatus.ĐÃ_TRANG_BỊ]: [], // Không thể chuyển từ đã trang bị
     };
@@ -443,6 +450,15 @@ export class SoftwareProposalsService {
         fullName: proposal.approver.fullName,
         email: proposal.approver.email,
         unitName: proposal.approver.unit?.name || "",
+      } as any;
+    }
+
+    if (proposal.technician) {
+      dto.technician = {
+        id: proposal.technician.id,
+        fullName: proposal.technician.fullName,
+        email: proposal.technician.email,
+        unitName: proposal.technician.unit?.name || "",
       } as any;
     }
 

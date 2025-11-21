@@ -38,6 +38,12 @@ export class ReplacementProposal {
     @Column({ nullable: true, comment: 'Người của Phòng Quản trị đi xác minh' })
     adminVerifierId?: string;
 
+    @Column({ nullable: true, comment: 'Quản trị viên khoa duyệt' })
+    facultyAdminApproverId?: string;
+
+    @Column({ nullable: true, comment: 'Ban giám hiệu duyệt' })
+    principalApproverId?: string;
+
     @Column({
         type: 'enum',
         enum: ReplacementStatus,
@@ -69,6 +75,14 @@ export class ReplacementProposal {
     @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'adminVerifierId' })
     adminVerifier?: User;
+
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: 'facultyAdminApproverId' })
+    facultyAdminApprover?: User;
+
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: 'principalApproverId' })
+    principalApprover?: User;
 
     @OneToMany(() => ReplacementItem, (item) => item.proposal)
     items?: ReplacementItem[];

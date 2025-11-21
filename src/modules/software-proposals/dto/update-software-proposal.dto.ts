@@ -48,4 +48,12 @@ export class UpdateSoftwareProposalDto {
   @IsOptional()
   @IsUUID(4, { message: "ID người duyệt phải là UUID hợp lệ" })
   approverId?: string;
+
+  @ApiPropertyOptional({
+    description: "ID kỹ thuật viên tiếp nhận",
+    format: "uuid",
+  })
+  @IsOptional()
+  @IsUUID(4, { message: "ID kỹ thuật viên phải là UUID hợp lệ" })
+  technicianId?: string;
 }

@@ -283,6 +283,8 @@ export class ReplacementProposalsService {
         "proposer",
         "teamLeadApprover",
         "adminVerifier",
+        "facultyAdminApprover",
+        "principalApprover",
         "items",
         "items.oldComponent",
         "items.oldComponent.computer",
@@ -319,6 +321,8 @@ export class ReplacementProposalsService {
         "proposer",
         "teamLeadApprover",
         "adminVerifier",
+        "facultyAdminApprover",
+        "principalApprover",
         "items",
         "items.oldComponent",
         "items.oldComponent.repairRequests",
@@ -347,11 +351,20 @@ export class ReplacementProposalsService {
         updateDto.teamLeadApproverId || currentUser.id;
     }
 
-    if (
-      updateDto.status === ReplacementStatus.ĐÃ_XÁC_MINH ||
-      updateDto.status === ReplacementStatus.ĐÃ_GỬI_BIÊN_BẢN ||
-      updateDto.status === ReplacementStatus.ĐÃ_KÝ_BIÊN_BẢN
-    ) {
+    // Auto-set faculty admin approver when status = ĐÃ_DUYỆT_TỜ_TRÌNH (Quản trị viên khoa duyệt lần 2)
+    if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH) {
+      proposal.facultyAdminApproverId =
+        updateDto.facultyAdminApproverId || currentUser.id;
+    }
+
+    // Auto-set principal approver when status = CHỜ_XÁC_MINH (Ban giám hiệu phê duyệt cuối)
+    if (updateDto.status === ReplacementStatus.CHỜ_XÁC_MINH) {
+      proposal.principalApproverId =
+        updateDto.principalApproverId || currentUser.id;
+    }
+
+    // Auto-set admin verifier when status = ĐÃ_XÁC_MINH (Phòng quản trị xác nhận)
+    if (updateDto.status === ReplacementStatus.ĐÃ_XÁC_MINH) {
       proposal.adminVerifierId = updateDto.adminVerifierId || currentUser.id;
     }
 
@@ -534,6 +547,24 @@ export class ReplacementProposalsService {
             username: proposal.adminVerifier.username,
             fullName: proposal.adminVerifier.fullName,
             email: proposal.adminVerifier.email,
+          }
+        : undefined,
+      facultyAdminApproverId: proposal.facultyAdminApproverId,
+      facultyAdminApprover: proposal.facultyAdminApprover
+        ? {
+            id: proposal.facultyAdminApprover.id,
+            username: proposal.facultyAdminApprover.username,
+            fullName: proposal.facultyAdminApprover.fullName,
+            email: proposal.facultyAdminApprover.email,
+          }
+        : undefined,
+      principalApproverId: proposal.principalApproverId,
+      principalApprover: proposal.principalApprover
+        ? {
+            id: proposal.principalApprover.id,
+            username: proposal.principalApprover.username,
+            fullName: proposal.principalApprover.fullName,
+            email: proposal.principalApprover.email,
           }
         : undefined,
       status: proposal.status,

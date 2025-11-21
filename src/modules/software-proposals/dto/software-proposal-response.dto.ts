@@ -38,6 +38,24 @@ class ApproverInfoDto {
   unitName: string;
 }
 
+class TechnicianInfoDto {
+  @Expose()
+  @ApiProperty({ description: "ID kỹ thuật viên" })
+  id: string;
+
+  @Expose()
+  @ApiProperty({ description: "Họ tên kỹ thuật viên" })
+  fullName: string;
+
+  @Expose()
+  @ApiProperty({ description: "Email kỹ thuật viên" })
+  email: string;
+
+  @Expose()
+  @ApiProperty({ description: "Tên đơn vị" })
+  unitName: string;
+}
+
 class RoomInfoDto {
   @Expose()
   @ApiProperty({ description: "ID phòng" })
@@ -122,6 +140,13 @@ export class SoftwareProposalResponseDto {
   approverId?: string;
 
   @Expose()
+  @ApiPropertyOptional({
+    description: "ID kỹ thuật viên tiếp nhận",
+    example: "123e4567-e89b-12d3-a456-426614174004",
+  })
+  technicianId?: string;
+
+  @Expose()
   @ApiProperty({
     description: "ID phòng máy cần trang bị phần mềm",
     example: "123e4567-e89b-12d3-a456-426614174003",
@@ -172,6 +197,14 @@ export class SoftwareProposalResponseDto {
     type: ApproverInfoDto,
   })
   approver?: ApproverInfoDto;
+
+  @Expose()
+  @Type(() => TechnicianInfoDto)
+  @ApiPropertyOptional({
+    description: "Thông tin kỹ thuật viên tiếp nhận",
+    type: TechnicianInfoDto,
+  })
+  technician?: TechnicianInfoDto;
 
   @Expose()
   @Type(() => RoomInfoDto)
