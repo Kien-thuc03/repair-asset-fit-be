@@ -37,6 +37,15 @@ export class SoftwareProposalFilterDto {
   approverId?: string;
 
   @ApiPropertyOptional({
+    description: "Lọc theo ID kỹ thuật viên được phân công",
+    format: "uuid",
+    example: "fb8c94eb-9088-4215-be87-0a5736e0b72c",
+  })
+  @IsOptional()
+  @IsUUID(4, { message: "ID kỹ thuật viên phải là UUID hợp lệ" })
+  technicianId?: string;
+
+  @ApiPropertyOptional({
     description: "Lọc theo trạng thái đề xuất",
     enum: SoftwareProposalStatus,
     enumName: "SoftwareProposalStatus",

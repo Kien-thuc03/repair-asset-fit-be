@@ -194,6 +194,7 @@ export class SoftwareProposalsController {
       - Theo phòng (roomId)
       - Theo người tạo (proposerId)
       - Theo người duyệt (approverId)
+      - Theo kỹ thuật viên được phân công (technicianId)
       - Theo trạng thái (status)
       - Tìm kiếm theo mã đề xuất hoặc lý do (search)
       - Theo khoảng thời gian (fromDate, toDate)
@@ -218,6 +219,11 @@ export class SoftwareProposalsController {
     name: "approverId",
     required: false,
     description: "Lọc theo ID người duyệt",
+  })
+  @ApiQuery({
+    name: "technicianId",
+    required: false,
+    description: "Lọc theo ID kỹ thuật viên được phân công",
   })
   @ApiQuery({
     name: "status",
@@ -509,5 +515,58 @@ export class SoftwareProposalsController {
     @Param("proposerId", ParseUUIDPipe) proposerId: string
   ): Promise<SoftwareProposalResponseDto[]> {
     return this.softwareProposalsService.findByProposer(proposerId);
+  }
+
+  @Get("technicians/:technicianId")
+  @ApiOperation({
+    summary: "Lấy danh sách đề xuất phần mềm theo kỹ thuật viên",
+    description: `
+      Lấy danh sách đề xuất phần mềm được phân công cho một kỹ thuật viên cụ thể.
+      
+      **Lưu ý quan trọng:**
+      - Chỉ trả về các đề xuất đã được tổ trưởng duyệt
+      - Các trạng thái được trả về: ĐÃ_DUYỆT, ĐANG_TRANG_BỊ, ĐÃ_TRANG_BỊ
+      - Không trả về các đề xuất đang CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI
+      
+      **Mục đích:**
+      - Kỹ thuật viên có thể xem các đề xuất đã được duyệt và được phân công cho mình
+      - Hỗ trợ quản lý và theo dõi công việc của từng kỹ thuật viên
+      
+      **Trả về:**
+      - Danh sách đề xuất phần mềm với đầy đủ thông tin (proposer, approver, room, items)
+      - Sắp xếp theo ngày tạo giảm dần (mới nhất trước)
+    `,
+  })
+  @ApiParam({
+    name: "technicianId",
+    description: "ID của kỹ thuật viên",
+    format: "uuid",
+    example: "fb8c94eb-9088-4215-be87-0a5736e0b72c",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách đề xuất thành công",
+    type: [SoftwareProposalResponseDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy kỹ thuật viên hoặc không có đề xuất nào",
+    schema: {
+      example: {
+        statusCode: 404,
+        message:
+          "Không tìm thấy kỹ thuật viên với ID: fb8c94eb-9088-4215-be87-0a5736e0b72c",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getProposalsByTechnician(
+    @Param("technicianId", ParseUUIDPipe) technicianId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    return this.softwareProposalsService.findByTechnician(technicianId);
   }
 }

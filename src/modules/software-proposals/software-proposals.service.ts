@@ -204,6 +204,46 @@ export class SoftwareProposalsService {
   }
 
   /**
+   * Lấy danh sách đề xuất phần mềm theo kỹ thuật viên được phân công
+   * Chỉ trả về các đề xuất đã được tổ trưởng duyệt (ĐÃ_DUYỆT, ĐANG_TRANG_BỊ, ĐÃ_TRANG_BỊ)
+   * @param technicianId - ID kỹ thuật viên
+   * @returns Danh sách SoftwareProposalResponseDto
+   */
+  async findByTechnician(
+    technicianId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    const proposals = await this.softwareProposalRepository.find({
+      where: [
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐÃ_DUYỆT,
+        },
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        },
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
+        },
+      ],
+      relations: [
+        "proposer",
+        "approver",
+        "technician",
+        "room",
+        "room.unit",
+        "items",
+      ],
+      order: {
+        createdAt: "DESC",
+      },
+    });
+
+    return proposals.map((proposal) => this.transformToResponseDto(proposal));
+  }
+
+  /**
    * Cập nhật thông tin đề xuất phần mềm
    * @param id - ID đề xuất
    * @param updateDto - Dữ liệu cập nhật
@@ -557,6 +597,13 @@ export class SoftwareProposalsService {
     if (filter.approverId) {
       queryBuilder.andWhere("proposal.approverId = :approverId", {
         approverId: filter.approverId,
+      });
+    }
+
+    // Lọc theo technicianId
+    if (filter.technicianId) {
+      queryBuilder.andWhere("proposal.technicianId = :technicianId", {
+        technicianId: filter.technicianId,
       });
     }
 
