@@ -351,14 +351,14 @@ export class ReplacementProposalsService {
         updateDto.teamLeadApproverId || currentUser.id;
     }
 
-    // Auto-set faculty admin approver when status = ĐÃ_DUYỆT_TỜ_TRÌNH (Quản trị viên khoa duyệt lần 2)
-    if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH) {
+    // Auto-set faculty admin approver when status = KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH (Quản trị viên khoa duyệt tờ trình)
+    if (updateDto.status === ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH) {
       proposal.facultyAdminApproverId =
         updateDto.facultyAdminApproverId || currentUser.id;
     }
 
-    // Auto-set principal approver when status = CHỜ_XÁC_MINH (Ban giám hiệu phê duyệt cuối)
-    if (updateDto.status === ReplacementStatus.CHỜ_XÁC_MINH) {
+    // Auto-set principal approver when status = ĐÃ_DUYỆT_TỜ_TRÌNH (Ban giám hiệu duyệt tờ trình)
+    if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH) {
       proposal.principalApproverId =
         updateDto.principalApproverId || currentUser.id;
     }
@@ -485,8 +485,11 @@ export class ReplacementProposalsService {
         ReplacementStatus.CHỜ_TỔ_TRƯỞNG_DUYỆT, // Allow re-submit
       ],
       [ReplacementStatus.ĐÃ_LẬP_TỜ_TRÌNH]: [
-        ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH,
+        ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH,
         ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH,
+      ],
+      [ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH]: [
+        ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH,
       ],
       [ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH]: [ReplacementStatus.CHỜ_XÁC_MINH],
       [ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH]: [
