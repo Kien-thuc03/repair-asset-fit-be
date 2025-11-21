@@ -650,7 +650,8 @@ export class SoftwareProposalsService {
       // Kỹ thuật viên chỉ có thể:
       // - Duyệt: CHỜ_DUYỆT → ĐÃ_DUYỆT
       // - Từ chối: CHỜ_DUYỆT → ĐÃ_TỪ_CHỐI
-      // - Đánh dấu đã trang bị: ĐÃ_DUYỆT → ĐÃ_TRANG_BỊ
+      // - Bắt đầu thiết lập: ĐÃ_DUYỆT → ĐANG_TRANG_BỊ
+      // - Hoàn thành trang bị: ĐANG_TRANG_BỊ → ĐÃ_TRANG_BỊ
       const technicianAllowedTransitions = [
         {
           from: SoftwareProposalStatus.CHỜ_DUYỆT,
@@ -662,6 +663,10 @@ export class SoftwareProposalsService {
         },
         {
           from: SoftwareProposalStatus.ĐÃ_DUYỆT,
+          to: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        },
+        {
+          from: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
           to: SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
         },
       ];
