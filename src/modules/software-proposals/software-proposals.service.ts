@@ -13,6 +13,7 @@ import { SoftwareProposalItem } from "src/entities/software-proposal-item.entity
 import { Room } from "src/entities/room.entity";
 import { User } from "src/entities/user.entity";
 import { Software } from "src/entities/software.entity";
+import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { CreateSoftwareProposalDto } from "./dto/create-software-proposal.dto";
 import { UpdateSoftwareProposalDto } from "./dto/update-software-proposal.dto";
 import { SoftwareProposalFilterDto } from "./dto/software-proposal-filter.dto";
@@ -30,6 +31,10 @@ export class SoftwareProposalsService {
     private readonly roomRepository: Repository<Room>,
     @InjectRepository(Software)
     private readonly softwareRepository: Repository<Software>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(TechnicianAssignment)
+    private readonly technicianAssignmentRepository: Repository<TechnicianAssignment>,
     private readonly dataSource: DataSource
   ) {}
 
@@ -62,23 +67,34 @@ export class SoftwareProposalsService {
       );
     }
 
-    // 3. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+    // 3. Tự động phân công kỹ thuật viên dựa trên vị trí phòng
+    let assignedTechnician: User | null = null;
+    if (room) {
+      assignedTechnician = await this.autoAssignTechnician(
+        room.id,
+        room.building,
+        room.floor
+      );
+    }
+
+    // 4. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
     return await this.dataSource.transaction(async (manager) => {
-      // 4. Tạo mã đề xuất tự động
+      // 5. Tạo mã đề xuất tự động
       const proposalCode = await this.generateProposalCode();
 
-      // 5. Tạo đề xuất chính
+      // 6. Tạo đề xuất chính
       const proposal = manager.create(SoftwareProposal, {
         proposalCode,
         proposerId: currentUser.id,
         roomId: createDto.roomId,
         reason: createDto.reason,
         status: SoftwareProposalStatus.CHỜ_DUYỆT,
+        technicianId: assignedTechnician?.id,
       });
 
       const savedProposal = await manager.save(SoftwareProposal, proposal);
 
-      // 6. Tạo các items cho đề xuất
+      // 7. Tạo các items cho đề xuất
       const items = createDto.items.map((item) =>
         manager.create(SoftwareProposalItem, {
           proposalId: savedProposal.id,
@@ -92,10 +108,10 @@ export class SoftwareProposalsService {
 
       await manager.save(SoftwareProposalItem, items);
 
-      // 7. Lấy thông tin đầy đủ với relations
+      // 8. Lấy thông tin đầy đủ với relations
       const fullProposal = await manager.findOne(SoftwareProposal, {
         where: { id: savedProposal.id },
-        relations: ["proposer", "room", "items"],
+        relations: ["proposer", "technician", "room", "items"],
       });
 
       return this.transformToResponseDto(fullProposal);
@@ -142,7 +158,14 @@ export class SoftwareProposalsService {
   async findOne(id: string): Promise<SoftwareProposalResponseDto> {
     const proposal = await this.softwareProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
+      relations: [
+        "proposer",
+        "approver",
+        "technician",
+        "room",
+        "room.unit",
+        "items",
+      ],
     });
 
     if (!proposal) {
@@ -164,7 +187,14 @@ export class SoftwareProposalsService {
   ): Promise<SoftwareProposalResponseDto[]> {
     const proposals = await this.softwareProposalRepository.find({
       where: { proposerId },
-      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
+      relations: [
+        "proposer",
+        "approver",
+        "technician",
+        "room",
+        "room.unit",
+        "items",
+      ],
       order: {
         createdAt: "DESC",
       },
@@ -252,7 +282,14 @@ export class SoftwareProposalsService {
     // Lấy thông tin đầy đủ với relations
     const fullProposal = await this.softwareProposalRepository.findOne({
       where: { id },
-      relations: ["proposer", "approver", "technician", "room", "room.unit", "items"],
+      relations: [
+        "proposer",
+        "approver",
+        "technician",
+        "room",
+        "room.unit",
+        "items",
+      ],
     });
 
     return this.transformToResponseDto(fullProposal);
@@ -558,5 +595,68 @@ export class SoftwareProposalsService {
     queryBuilder.orderBy(`proposal.${sortBy}`, sortOrder);
 
     return queryBuilder;
+  }
+
+  /**
+   * Tự động phân công kỹ thuật viên phù hợp dựa trên vị trí phòng
+   * - Tìm các KTV được phân công cho tầng hoặc tòa nhà
+   * - Chọn KTV có ít đề xuất đang xử lý nhất
+   * @param roomId - ID phòng
+   * @param building - Tên tòa nhà
+   * @param floor - Tên tầng
+   * @returns User (KTV được chọn) hoặc null nếu không tìm thấy
+   */
+  private async autoAssignTechnician(
+    roomId: string,
+    building: string,
+    floor: string
+  ): Promise<User | null> {
+    // 1. Tìm các kỹ thuật viên được phân công cho tầng hoặc tòa nhà này
+    const assignments = await this.technicianAssignmentRepository.find({
+      where: [
+        { building, floor }, // Phân công theo tầng cụ thể
+        { building, floor: null }, // Phân công cả tòa nhà
+      ],
+      relations: ["technician", "technician.roles"],
+    });
+
+    if (assignments.length === 0) {
+      return null;
+    }
+
+    // 2. Lấy danh sách technicianId
+    const technicianIds = assignments.map((a) => a.technicianId);
+
+    // 3. Đếm số đề xuất đang xử lý của mỗi kỹ thuật viên
+    const techniciansWithWorkload = await Promise.all(
+      technicianIds.map(async (technicianId) => {
+        const activeProposalsCount =
+          await this.softwareProposalRepository.count({
+            where: [
+              { technicianId, status: SoftwareProposalStatus.CHỜ_DUYỆT },
+              { technicianId, status: SoftwareProposalStatus.ĐÃ_DUYỆT },
+              { technicianId, status: SoftwareProposalStatus.ĐANG_TRANG_BỊ },
+            ],
+          });
+
+        const technician = assignments.find(
+          (a) => a.technicianId === technicianId
+        )?.technician;
+
+        return {
+          technician,
+          workload: activeProposalsCount,
+        };
+      })
+    );
+
+    // 4. Chọn kỹ thuật viên có workload thấp nhất
+    const sortedTechnicians = techniciansWithWorkload
+      .filter((t) => t.technician) // Loại bỏ null
+      .sort((a, b) => a.workload - b.workload);
+
+    return sortedTechnicians.length > 0
+      ? sortedTechnicians[0].technician
+      : null;
   }
 }

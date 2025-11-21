@@ -6,6 +6,8 @@ import { SoftwareProposal } from "src/entities/software-proposal.entity";
 import { SoftwareProposalItem } from "src/entities/software-proposal-item.entity";
 import { Room } from "src/entities/room.entity";
 import { Software } from "src/entities/software.entity";
+import { User } from "src/entities/user.entity";
+import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { Software } from "src/entities/software.entity";
       SoftwareProposalItem,
       Room,
       Software,
+      User,
+      TechnicianAssignment,
     ]),
   ],
   controllers: [SoftwareProposalsController],
