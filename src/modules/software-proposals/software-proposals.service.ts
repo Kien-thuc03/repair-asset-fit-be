@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder, DataSource } from "typeorm";
+import { Repository, SelectQueryBuilder, DataSource, In } from "typeorm";
 import { plainToInstance } from "class-transformer";
 import { SoftwareProposal } from "src/entities/software-proposal.entity";
 import { SoftwareProposalItem } from "src/entities/software-proposal-item.entity";
@@ -15,10 +15,12 @@ import { User } from "src/entities/user.entity";
 import { Software } from "src/entities/software.entity";
 import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { Computer } from "src/entities/computer.entity";
+import { ComputerSoftware } from "src/entities/computer-software.entity";
 import { CreateSoftwareProposalDto } from "./dto/create-software-proposal.dto";
 import { UpdateSoftwareProposalDto } from "./dto/update-software-proposal.dto";
 import { SoftwareProposalFilterDto } from "./dto/software-proposal-filter.dto";
 import { SoftwareProposalResponseDto } from "./dto/software-proposal-response.dto";
+import { CompleteSoftwareProposalDto } from "./dto/complete-software-proposal.dto";
 import { SoftwareProposalStatus } from "src/common/shared/SoftwareProposalStatus";
 
 @Injectable()
@@ -38,6 +40,8 @@ export class SoftwareProposalsService {
     private readonly technicianAssignmentRepository: Repository<TechnicianAssignment>,
     @InjectRepository(Computer)
     private readonly computerRepository: Repository<Computer>,
+    @InjectRepository(ComputerSoftware)
+    private readonly computerSoftwareRepository: Repository<ComputerSoftware>,
     private readonly dataSource: DataSource
   ) {}
 
@@ -108,8 +112,7 @@ export class SoftwareProposalsService {
           softwareName: item.softwareName,
           version: item.version,
           publisher: item.publisher,
-          quantity: computerCount, // Tự động gắn số lượng máy tính
-          licenseType: item.licenseType,
+          quantity: item.quantity,
         })
       );
 
@@ -194,6 +197,46 @@ export class SoftwareProposalsService {
   ): Promise<SoftwareProposalResponseDto[]> {
     const proposals = await this.softwareProposalRepository.find({
       where: { proposerId },
+      relations: [
+        "proposer",
+        "approver",
+        "technician",
+        "room",
+        "room.unit",
+        "items",
+      ],
+      order: {
+        createdAt: "DESC",
+      },
+    });
+
+    return proposals.map((proposal) => this.transformToResponseDto(proposal));
+  }
+
+  /**
+   * Lấy danh sách đề xuất phần mềm theo kỹ thuật viên được phân công
+   * Chỉ trả về các đề xuất đã được tổ trưởng duyệt (ĐÃ_DUYỆT, ĐANG_TRANG_BỊ, ĐÃ_TRANG_BỊ)
+   * @param technicianId - ID kỹ thuật viên
+   * @returns Danh sách SoftwareProposalResponseDto
+   */
+  async findByTechnician(
+    technicianId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    const proposals = await this.softwareProposalRepository.find({
+      where: [
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐÃ_DUYỆT,
+        },
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        },
+        {
+          technicianId,
+          status: SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
+        },
+      ],
       relations: [
         "proposer",
         "approver",
@@ -303,6 +346,176 @@ export class SoftwareProposalsService {
   }
 
   /**
+   * Hoàn thành đề xuất phần mềm và cập nhật phần mềm cho tất cả máy tính trong phòng
+   * @param id - ID đề xuất
+   * @param completeDto - Dữ liệu hoàn thành đề xuất
+   * @param currentUser - Người dùng hiện tại (kỹ thuật viên)
+   * @returns SoftwareProposalResponseDto
+   */
+  async completeProposal(
+    id: string,
+    completeDto: CompleteSoftwareProposalDto,
+    currentUser: User
+  ): Promise<SoftwareProposalResponseDto> {
+    // 1. Lấy đề xuất với items và room
+    const proposal = await this.softwareProposalRepository.findOne({
+      where: { id },
+      relations: ["items", "room"],
+    });
+
+    if (!proposal) {
+      throw new NotFoundException(
+        `Không tìm thấy đề xuất phần mềm với ID: ${id}`
+      );
+    }
+
+    // 2. Kiểm tra trạng thái phải là ĐANG_TRANG_BỊ
+    if (proposal.status !== SoftwareProposalStatus.ĐANG_TRANG_BỊ) {
+      throw new BadRequestException(
+        `Chỉ có thể hoàn thành đề xuất ở trạng thái ĐANG_TRANG_BỊ. Trạng thái hiện tại: ${proposal.status}`
+      );
+    }
+
+    // 3. Kiểm tra quyền - chỉ kỹ thuật viên được phân công mới có thể hoàn thành
+    if (proposal.technicianId !== currentUser.id && !this.isAdmin(currentUser)) {
+      throw new ForbiddenException(
+        "Bạn không có quyền hoàn thành đề xuất này"
+      );
+    }
+
+    // 4. Sử dụng transaction để đảm bảo tính nhất quán
+    return await this.dataSource.transaction(async (manager) => {
+      // 5. Lấy tất cả máy tính trong phòng
+      const computers = await manager.find(Computer, {
+        where: { roomId: proposal.roomId },
+      });
+
+      if (computers.length === 0) {
+        throw new BadRequestException(
+          `Không tìm thấy máy tính nào trong phòng ${proposal.room?.name || proposal.roomId}`
+        );
+      }
+
+      // 6. Xử lý từng phần mềm trong đề xuất
+      for (const softwareInfo of completeDto.softwareInfo) {
+        // Tìm proposal item tương ứng
+        const proposalItem = proposal.items?.find(
+          (item) => item.id === softwareInfo.itemId
+        );
+
+        if (!proposalItem) {
+          throw new NotFoundException(
+            `Không tìm thấy proposal item với ID: ${softwareInfo.itemId}`
+          );
+        }
+
+        // Tạo hoặc tìm Software trong bảng software
+        let software: Software;
+
+        // Xác định thông tin phần mềm (ưu tiên thông tin từ form, sau đó từ proposal item)
+        const softwareName = softwareInfo.name || proposalItem.softwareName;
+        const softwareVersion = softwareInfo.version || proposalItem.version || null;
+        const softwarePublisher = softwareInfo.publisher || proposalItem.publisher || null;
+
+        // Nếu đã có newlyAcquiredSoftwareId, sử dụng phần mềm đó
+        if (proposalItem.newlyAcquiredSoftwareId) {
+          software = await manager.findOne(Software, {
+            where: { id: proposalItem.newlyAcquiredSoftwareId },
+          });
+
+          if (!software) {
+            throw new NotFoundException(
+              `Không tìm thấy phần mềm với ID: ${proposalItem.newlyAcquiredSoftwareId}`
+            );
+          }
+
+          // Cập nhật thông tin phần mềm nếu có thay đổi
+          if (softwareInfo.name) software.name = softwareInfo.name;
+          if (softwareInfo.version) software.version = softwareInfo.version;
+          if (softwareInfo.publisher) software.publisher = softwareInfo.publisher;
+
+          await manager.save(Software, software);
+        } else {
+          // Tìm xem phần mềm đã tồn tại trong bảng Software chưa
+          const existingSoftware = await manager.findOne(Software, {
+            where: {
+              name: softwareName,
+              version: softwareVersion,
+              publisher: softwarePublisher,
+            },
+          });
+
+          if (existingSoftware) {
+            // Sử dụng phần mềm đã tồn tại
+            software = existingSoftware;
+          } else {
+            // Tạo phần mềm mới
+            software = manager.create(Software, {
+              name: softwareName,
+              version: softwareVersion,
+              publisher: softwarePublisher,
+            });
+
+            software = await manager.save(Software, software);
+          }
+
+          // Cập nhật newlyAcquiredSoftwareId trong proposal item
+          proposalItem.newlyAcquiredSoftwareId = software.id;
+          await manager.save(SoftwareProposalItem, proposalItem);
+        }
+
+        // 7. Tạo ComputerSoftware records cho tất cả máy tính trong phòng
+        // Kiểm tra xem phần mềm đã được cài trên máy tính nào chưa
+        const computerIds = computers.map((c) => c.id);
+        const existingComputerSoftware = await manager.find(ComputerSoftware, {
+          where: {
+            softwareId: software.id,
+            computerId: In(computerIds),
+          },
+        });
+
+        const existingComputerIds = new Set(
+          existingComputerSoftware.map((cs) => cs.computerId)
+        );
+
+        // Chỉ tạo records cho các máy tính chưa có phần mềm này
+        const computersToInstall = computers.filter(
+          (computer) => !existingComputerIds.has(computer.id)
+        );
+
+        if (computersToInstall.length > 0) {
+          const computerSoftwareRecords = computersToInstall.map((computer) =>
+            manager.create(ComputerSoftware, {
+              computerId: computer.id,
+              softwareId: software.id,
+              installationDate: new Date(),
+            })
+          );
+
+          await manager.save(ComputerSoftware, computerSoftwareRecords);
+        }
+      }
+
+      // 8. Cập nhật trạng thái đề xuất sang ĐÃ_TRANG_BỊ
+      proposal.status = SoftwareProposalStatus.ĐÃ_TRANG_BỊ;
+      proposal.technicianId = currentUser.id;
+      await manager.save(SoftwareProposal, proposal);
+
+      // 9. Lấy thông tin đầy đủ với relations
+      const fullProposal = await this.softwareProposalRepository.findOne({
+        where: { id },
+        relations: [
+          "proposer",
+          "approver",
+          "technician",
+          "room",
+          "room.unit",
+          "items",
+        ],
+      });
+
+      return this.transformToResponseDto(fullProposal);
+    });
    * Đếm số lượng máy tính trong một phòng cụ thể (không bị xóa)
    * Sử dụng JOIN với bảng assets để kiểm tra soft delete
    * @param roomId - ID của phòng
@@ -455,7 +668,8 @@ export class SoftwareProposalsService {
       // Kỹ thuật viên chỉ có thể:
       // - Duyệt: CHỜ_DUYỆT → ĐÃ_DUYỆT
       // - Từ chối: CHỜ_DUYỆT → ĐÃ_TỪ_CHỐI
-      // - Đánh dấu đã trang bị: ĐÃ_DUYỆT → ĐÃ_TRANG_BỊ
+      // - Bắt đầu thiết lập: ĐÃ_DUYỆT → ĐANG_TRANG_BỊ
+      // - Hoàn thành trang bị: ĐANG_TRANG_BỊ → ĐÃ_TRANG_BỊ
       const technicianAllowedTransitions = [
         {
           from: SoftwareProposalStatus.CHỜ_DUYỆT,
@@ -467,6 +681,10 @@ export class SoftwareProposalsService {
         },
         {
           from: SoftwareProposalStatus.ĐÃ_DUYỆT,
+          to: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        },
+        {
+          from: SoftwareProposalStatus.ĐANG_TRANG_BỊ,
           to: SoftwareProposalStatus.ĐÃ_TRANG_BỊ,
         },
       ];
@@ -580,6 +798,13 @@ export class SoftwareProposalsService {
     if (filter.approverId) {
       queryBuilder.andWhere("proposal.approverId = :approverId", {
         approverId: filter.approverId,
+      });
+    }
+
+    // Lọc theo technicianId
+    if (filter.technicianId) {
+      queryBuilder.andWhere("proposal.technicianId = :technicianId", {
+        technicianId: filter.technicianId,
       });
     }
 

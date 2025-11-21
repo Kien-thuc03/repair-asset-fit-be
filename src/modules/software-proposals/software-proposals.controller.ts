@@ -25,6 +25,7 @@ import { CreateSoftwareProposalDto } from "./dto/create-software-proposal.dto";
 import { UpdateSoftwareProposalDto } from "./dto/update-software-proposal.dto";
 import { SoftwareProposalFilterDto } from "./dto/software-proposal-filter.dto";
 import { SoftwareProposalResponseDto } from "./dto/software-proposal-response.dto";
+import { CompleteSoftwareProposalDto } from "./dto/complete-software-proposal.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "src/entities/user.entity";
@@ -89,7 +90,6 @@ export class SoftwareProposalsController {
               version: "2021",
               publisher: "Microsoft Corporation",
               quantity: 30,
-              licenseType: "Vĩnh viễn",
             },
           ],
         },
@@ -107,21 +107,18 @@ export class SoftwareProposalsController {
               version: "2024",
               publisher: "Adobe Inc.",
               quantity: 25,
-              licenseType: "Theo năm",
             },
             {
               softwareName: "Adobe Illustrator",
               version: "2024",
               publisher: "Adobe Inc.",
               quantity: 25,
-              licenseType: "Theo năm",
             },
             {
               softwareName: "AutoCAD",
               version: "2024",
               publisher: "Autodesk",
               quantity: 20,
-              licenseType: "Theo năm",
             },
           ],
         },
@@ -194,6 +191,7 @@ export class SoftwareProposalsController {
       - Theo phòng (roomId)
       - Theo người tạo (proposerId)
       - Theo người duyệt (approverId)
+      - Theo kỹ thuật viên được phân công (technicianId)
       - Theo trạng thái (status)
       - Tìm kiếm theo mã đề xuất hoặc lý do (search)
       - Theo khoảng thời gian (fromDate, toDate)
@@ -218,6 +216,11 @@ export class SoftwareProposalsController {
     name: "approverId",
     required: false,
     description: "Lọc theo ID người duyệt",
+  })
+  @ApiQuery({
+    name: "technicianId",
+    required: false,
+    description: "Lọc theo ID kỹ thuật viên được phân công",
   })
   @ApiQuery({
     name: "status",
@@ -480,7 +483,6 @@ export class SoftwareProposalsController {
               version: "2021",
               publisher: "Microsoft Corporation",
               quantity: 30,
-              licenseType: "Vĩnh viễn",
             },
           ],
           createdAt: "2025-11-04T10:00:00Z",
@@ -509,5 +511,158 @@ export class SoftwareProposalsController {
     @Param("proposerId", ParseUUIDPipe) proposerId: string
   ): Promise<SoftwareProposalResponseDto[]> {
     return this.softwareProposalsService.findByProposer(proposerId);
+  }
+
+  @Get("technicians/:technicianId")
+  @ApiOperation({
+    summary: "Lấy danh sách đề xuất phần mềm theo kỹ thuật viên",
+    description: `
+      Lấy danh sách đề xuất phần mềm được phân công cho một kỹ thuật viên cụ thể.
+      
+      **Lưu ý quan trọng:**
+      - Chỉ trả về các đề xuất đã được tổ trưởng duyệt
+      - Các trạng thái được trả về: ĐÃ_DUYỆT, ĐANG_TRANG_BỊ, ĐÃ_TRANG_BỊ
+      - Không trả về các đề xuất đang CHỜ_DUYỆT hoặc ĐÃ_TỪ_CHỐI
+      
+      **Mục đích:**
+      - Kỹ thuật viên có thể xem các đề xuất đã được duyệt và được phân công cho mình
+      - Hỗ trợ quản lý và theo dõi công việc của từng kỹ thuật viên
+      
+      **Trả về:**
+      - Danh sách đề xuất phần mềm với đầy đủ thông tin (proposer, approver, room, items)
+      - Sắp xếp theo ngày tạo giảm dần (mới nhất trước)
+    `,
+  })
+  @ApiParam({
+    name: "technicianId",
+    description: "ID của kỹ thuật viên",
+    format: "uuid",
+    example: "fb8c94eb-9088-4215-be87-0a5736e0b72c",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách đề xuất thành công",
+    type: [SoftwareProposalResponseDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy kỹ thuật viên hoặc không có đề xuất nào",
+    schema: {
+      example: {
+        statusCode: 404,
+        message:
+          "Không tìm thấy kỹ thuật viên với ID: fb8c94eb-9088-4215-be87-0a5736e0b72c",
+        error: "Not Found",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getProposalsByTechnician(
+    @Param("technicianId", ParseUUIDPipe) technicianId: string
+  ): Promise<SoftwareProposalResponseDto[]> {
+    return this.softwareProposalsService.findByTechnician(technicianId);
+  }
+
+  @Put(":id/complete")
+  @ApiOperation({
+    summary: "Hoàn thành đề xuất phần mềm và cập nhật phần mềm cho các máy tính",
+    description: `
+      Hoàn thành đề xuất phần mềm và tự động cập nhật phần mềm cho tất cả máy tính trong phòng.
+      
+      **Quy trình:**
+      1. Kỹ thuật viên nhập thông tin phần mềm (tên, version, publisher) nếu cần bổ sung
+      2. Hệ thống tạo hoặc cập nhật phần mềm trong bảng Software
+      3. Tự động tạo ComputerSoftware records cho tất cả máy tính trong phòng
+      4. Cập nhật trạng thái đề xuất sang ĐÃ_TRANG_BỊ
+      
+      **Yêu cầu:**
+      - Đề xuất phải ở trạng thái ĐANG_TRANG_BỊ
+      - Chỉ kỹ thuật viên được phân công hoặc admin mới có thể hoàn thành
+      - Phòng phải có ít nhất một máy tính
+      
+      **Lưu ý:**
+      - Nếu phần mềm đã tồn tại (có newlyAcquiredSoftwareId), sẽ cập nhật thông tin
+      - Nếu phần mềm chưa tồn tại, sẽ tạo mới trong bảng Software
+      - Tự động tạo ComputerSoftware cho tất cả máy tính trong phòng
+      - Nếu phần mềm đã được cài trên máy tính, sẽ bỏ qua (do unique constraint)
+    `,
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID của đề xuất phần mềm",
+    format: "uuid",
+  })
+  @ApiBody({
+    type: CompleteSoftwareProposalDto,
+    examples: {
+      "complete-single-software": {
+        summary: "Hoàn thành đề xuất với một phần mềm",
+        value: {
+          softwareInfo: [
+            {
+              itemId: "123e4567-e89b-12d3-a456-426614174000",
+              name: "Microsoft Office 2021 Professional Plus",
+              version: "2021",
+              publisher: "Microsoft Corporation",
+            },
+          ],
+          completionNotes: "Đã cài đặt thành công trên tất cả máy tính trong phòng",
+        },
+      },
+      "complete-multiple-software": {
+        summary: "Hoàn thành đề xuất với nhiều phần mềm",
+        value: {
+          softwareInfo: [
+            {
+              itemId: "123e4567-e89b-12d3-a456-426614174000",
+              name: "Microsoft Office 2021",
+              version: "2021",
+              publisher: "Microsoft Corporation",
+            },
+            {
+              itemId: "123e4567-e89b-12d3-a456-426614174001",
+              name: "Adobe Photoshop 2024",
+              version: "2024",
+              publisher: "Adobe Inc.",
+            },
+          ],
+          completionNotes: "Đã cài đặt bộ phần mềm hoàn chỉnh cho phòng thiết kế",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Hoàn thành đề xuất thành công",
+    type: SoftwareProposalResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Đề xuất không ở trạng thái ĐANG_TRANG_BỊ hoặc không có máy tính trong phòng",
+    schema: {
+      example: {
+        statusCode: 400,
+        message: "Chỉ có thể hoàn thành đề xuất ở trạng thái ĐANG_TRANG_BỊ",
+        error: "Bad Request",
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: "Không có quyền hoàn thành đề xuất này",
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy đề xuất hoặc proposal item",
+  })
+  async completeProposal(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() completeDto: CompleteSoftwareProposalDto,
+    @CurrentUser() user: User
+  ): Promise<SoftwareProposalResponseDto> {
+    return this.softwareProposalsService.completeProposal(id, completeDto, user);
   }
 }

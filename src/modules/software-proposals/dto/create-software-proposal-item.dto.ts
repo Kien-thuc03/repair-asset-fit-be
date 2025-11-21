@@ -52,17 +52,6 @@ export class CreateSoftwareProposalItemDto {
   quantity: number = 1;
 
   @ApiProperty({
-    description: "Loại giấy phép",
-    example: "Vĩnh viễn",
-    required: false,
-    maxLength: 100,
-  })
-  @IsOptional()
-  @IsString({ message: "Loại giấy phép phải là chuỗi ký tự" })
-  @MaxLength(100, { message: "Loại giấy phép không được vượt quá 100 ký tự" })
-  licenseType?: string;
-
-  @ApiProperty({
     description:
       "ID phần mềm trong hệ thống sau khi được thêm vào (chỉ dành cho cập nhật)",
     required: false,
