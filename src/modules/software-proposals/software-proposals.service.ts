@@ -74,7 +74,10 @@ export class SoftwareProposalsService {
       );
     }
 
-    // 3. Tự động phân công kỹ thuật viên dựa trên vị trí phòng
+    // 3. Đếm số lượng máy tính trong phòng (không bị xóa)
+    const computerCount = await this.getComputerCountInRoom(createDto.roomId);
+
+    // 4. Tự động phân công kỹ thuật viên dựa trên vị trí phòng
     let assignedTechnician: User | null = null;
     if (room) {
       assignedTechnician = await this.autoAssignTechnician(
@@ -84,12 +87,12 @@ export class SoftwareProposalsService {
       );
     }
 
-    // 4. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+    // 5. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
     return await this.dataSource.transaction(async (manager) => {
-      // 5. Tạo mã đề xuất tự động
+      // 6. Tạo mã đề xuất tự động
       const proposalCode = await this.generateProposalCode();
 
-      // 6. Tạo đề xuất chính
+      // 7. Tạo đề xuất chính
       const proposal = manager.create(SoftwareProposal, {
         proposalCode,
         proposerId: currentUser.id,
@@ -101,7 +104,8 @@ export class SoftwareProposalsService {
 
       const savedProposal = await manager.save(SoftwareProposal, proposal);
 
-      // 7. Tạo các items cho đề xuất
+      // 8. Tạo các items cho đề xuất
+      // Tự động gắn quantity bằng số lượng máy tính trong phòng
       const items = createDto.items.map((item) =>
         manager.create(SoftwareProposalItem, {
           proposalId: savedProposal.id,
@@ -114,7 +118,7 @@ export class SoftwareProposalsService {
 
       await manager.save(SoftwareProposalItem, items);
 
-      // 8. Lấy thông tin đầy đủ với relations
+      // 9. Lấy thông tin đầy đủ với relations
       const fullProposal = await manager.findOne(SoftwareProposal, {
         where: { id: savedProposal.id },
         relations: ["proposer", "technician", "room", "items"],
@@ -512,6 +516,20 @@ export class SoftwareProposalsService {
 
       return this.transformToResponseDto(fullProposal);
     });
+   * Đếm số lượng máy tính trong một phòng cụ thể (không bị xóa)
+   * Sử dụng JOIN với bảng assets để kiểm tra soft delete
+   * @param roomId - ID của phòng
+   * @returns Promise<number> - Số lượng máy tính
+   */
+  private async getComputerCountInRoom(roomId: string): Promise<number> {
+    const count = await this.computerRepository
+      .createQueryBuilder("computer")
+      .leftJoin("computer.asset", "asset")
+      .where("computer.roomId = :roomId", { roomId })
+      .andWhere("asset.deletedAt IS NULL") // Chỉ đếm máy tính chưa bị xóa
+      .getCount();
+
+    return count;
   }
 
   /**
