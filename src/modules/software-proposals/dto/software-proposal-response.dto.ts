@@ -100,10 +100,6 @@ class SoftwareProposalItemResponseDto {
   quantity: number;
 
   @Expose()
-  @ApiPropertyOptional({ description: "Loại giấy phép" })
-  licenseType?: string;
-
-  @Expose()
   @ApiPropertyOptional({
     description: "ID phần mềm sau khi được thêm vào hệ thống",
   })
