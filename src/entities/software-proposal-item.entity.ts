@@ -28,9 +28,6 @@ export class SoftwareProposalItem {
     @Column({ default: 1, comment: 'Số lượng license cần mua' })
     quantity: number;
 
-    @Column({ nullable: true, comment: 'Loại giấy phép: Vĩnh viễn, Theo năm...' })
-    licenseType?: string;
-
     @Column({ nullable: true, comment: 'ID trong bảng Software sau khi được thêm vào' })
     newlyAcquiredSoftwareId?: string;
 
