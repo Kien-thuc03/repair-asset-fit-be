@@ -67,13 +67,8 @@ export class RoomsController {
   }
 
   @Get("unit")
-  @ApiOperation({ summary: "Get all rooms by unit ID" })
-  @ApiQuery({
-    name: "unitId",
-    required: true,
-    type: String,
-    description: "Unit ID to filter rooms",
-    format: "uuid",
+  @ApiOperation({
+    summary: "Lấy danh sách phòng theo Khoa Công nghệ Thông tin",
   })
   @ApiResponse({
     status: 200,
@@ -81,18 +76,13 @@ export class RoomsController {
     type: [RoomResponseDto],
   })
   @ApiResponse({
-    status: 400,
-    description: "Invalid unit ID format",
-  })
-  @ApiResponse({
     status: 404,
     description: "Unit not found",
   })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiBearerAuth()
-  async findByUnit(
-    @Query("unitId", ParseUUIDPipe) unitId: string
-  ): Promise<RoomResponseDto[]> {
+  async findByUnit(): Promise<RoomResponseDto[]> {
+    const unitId = "e576addc-19ef-4bee-a44b-c26d2eebf489";
     return this.roomsService.findByUnit(unitId);
   }
 
