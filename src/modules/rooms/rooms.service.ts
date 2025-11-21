@@ -117,7 +117,8 @@ export class RoomsService {
   }
 
   async findByUnit(unitId: string): Promise<RoomResponseDto[]> {
-    // Check if unit exists
+    
+    // Check if unit exist
     const unit = await this.unitRepository.findOne({
       where: { id: unitId },
     });
