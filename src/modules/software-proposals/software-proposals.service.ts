@@ -74,10 +74,31 @@ export class SoftwareProposalsService {
       );
     }
 
-    // 3. Đếm số lượng máy tính trong phòng (không bị xóa)
+    // 3. Kiểm tra phòng có đề xuất phần mềm đang chờ xử lý không
+    const existingProposal = await this.softwareProposalRepository.findOne({
+      where: {
+        roomId: createDto.roomId,
+        status: In([
+          SoftwareProposalStatus.CHỜ_DUYỆT,
+          SoftwareProposalStatus.ĐÃ_DUYỆT,
+          SoftwareProposalStatus.ĐANG_TRANG_BỊ,
+        ]),
+      },
+      order: {
+        createdAt: "DESC",
+      },
+    });
+
+    if (existingProposal) {
+      throw new ConflictException(
+        `Phòng này đang có đề xuất phần mềm chưa hoàn thành (${existingProposal.proposalCode} - ${existingProposal.status}). Vui lòng đợi đề xuất hiện tại hoàn thành trước khi tạo đề xuất mới.`
+      );
+    }
+
+    // 4. Đếm số lượng máy tính trong phòng (không bị xóa)
     const computerCount = await this.getComputerCountInRoom(createDto.roomId);
 
-    // 4. Tự động phân công kỹ thuật viên dựa trên vị trí phòng
+    // 5. Tự động phân công kỹ thuật viên dựa trên vị trí phòng
     let assignedTechnician: User | null = null;
     if (room) {
       assignedTechnician = await this.autoAssignTechnician(
@@ -87,12 +108,12 @@ export class SoftwareProposalsService {
       );
     }
 
-    // 5. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+    // 6. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
     return await this.dataSource.transaction(async (manager) => {
-      // 6. Tạo mã đề xuất tự động
+      // 7. Tạo mã đề xuất tự động
       const proposalCode = await this.generateProposalCode();
 
-      // 7. Tạo đề xuất chính
+      // 8. Tạo đề xuất chính
       const proposal = manager.create(SoftwareProposal, {
         proposalCode,
         proposerId: currentUser.id,
@@ -104,7 +125,7 @@ export class SoftwareProposalsService {
 
       const savedProposal = await manager.save(SoftwareProposal, proposal);
 
-      // 8. Tạo các items cho đề xuất
+      // 9. Tạo các items cho đề xuất
       // Tự động gắn quantity bằng số lượng máy tính trong phòng
       const items = createDto.items.map((item) =>
         manager.create(SoftwareProposalItem, {
@@ -118,7 +139,7 @@ export class SoftwareProposalsService {
 
       await manager.save(SoftwareProposalItem, items);
 
-      // 9. Lấy thông tin đầy đủ với relations
+      // 10. Lấy thông tin đầy đủ với relations
       const fullProposal = await manager.findOne(SoftwareProposal, {
         where: { id: savedProposal.id },
         relations: ["proposer", "technician", "room", "items"],
@@ -377,10 +398,11 @@ export class SoftwareProposalsService {
     }
 
     // 3. Kiểm tra quyền - chỉ kỹ thuật viên được phân công mới có thể hoàn thành
-    if (proposal.technicianId !== currentUser.id && !this.isAdmin(currentUser)) {
-      throw new ForbiddenException(
-        "Bạn không có quyền hoàn thành đề xuất này"
-      );
+    if (
+      proposal.technicianId !== currentUser.id &&
+      !this.isAdmin(currentUser)
+    ) {
+      throw new ForbiddenException("Bạn không có quyền hoàn thành đề xuất này");
     }
 
     // 4. Sử dụng transaction để đảm bảo tính nhất quán
@@ -414,8 +436,10 @@ export class SoftwareProposalsService {
 
         // Xác định thông tin phần mềm (ưu tiên thông tin từ form, sau đó từ proposal item)
         const softwareName = softwareInfo.name || proposalItem.softwareName;
-        const softwareVersion = softwareInfo.version || proposalItem.version || null;
-        const softwarePublisher = softwareInfo.publisher || proposalItem.publisher || null;
+        const softwareVersion =
+          softwareInfo.version || proposalItem.version || null;
+        const softwarePublisher =
+          softwareInfo.publisher || proposalItem.publisher || null;
 
         // Nếu đã có newlyAcquiredSoftwareId, sử dụng phần mềm đó
         if (proposalItem.newlyAcquiredSoftwareId) {
@@ -432,7 +456,8 @@ export class SoftwareProposalsService {
           // Cập nhật thông tin phần mềm nếu có thay đổi
           if (softwareInfo.name) software.name = softwareInfo.name;
           if (softwareInfo.version) software.version = softwareInfo.version;
-          if (softwareInfo.publisher) software.publisher = softwareInfo.publisher;
+          if (softwareInfo.publisher)
+            software.publisher = softwareInfo.publisher;
 
           await manager.save(Software, software);
         } else {
@@ -517,11 +542,11 @@ export class SoftwareProposalsService {
       return this.transformToResponseDto(fullProposal);
     });
   }
+
   /**
-   * Đếm số lượng máy tính trong một phòng cụ thể (không bị xóa)
-   * Sử dụng JOIN với bảng assets để kiểm tra soft delete
-   * @param roomId - ID của phòng
-   * @returns Promise<number> - Số lượng máy tính
+   * Đếm số lượng máy tính trong một phòng (chưa bị xóa)
+   * @param roomId - ID phòng
+   * @returns Số lượng máy tính
    */
   private async getComputerCountInRoom(roomId: string): Promise<number> {
     const count = await this.computerRepository
