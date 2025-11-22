@@ -516,10 +516,12 @@ export class SoftwareProposalsService {
 
       return this.transformToResponseDto(fullProposal);
     });
-   * Đếm số lượng máy tính trong một phòng cụ thể (không bị xóa)
-   * Sử dụng JOIN với bảng assets để kiểm tra soft delete
-   * @param roomId - ID của phòng
-   * @returns Promise<number> - Số lượng máy tính
+  }
+
+  /**
+   * Đếm số lượng máy tính trong một phòng (chưa bị xóa)
+   * @param roomId - ID phòng
+   * @returns Số lượng máy tính
    */
   private async getComputerCountInRoom(roomId: string): Promise<number> {
     const count = await this.computerRepository
