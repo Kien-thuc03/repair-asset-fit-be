@@ -815,6 +815,60 @@ export class RepairsController {
     return this.repairsService.findByReporter(reporterId);
   }
 
+  @Get("technician/assigned-floors")
+  @ApiOperation({
+    summary: "Lấy danh sách tầng được phân công cho kỹ thuật viên",
+    description: `
+      Lấy danh sách các tầng tòa nhà được phân công cho kỹ thuật viên hiện tại.
+      
+      **Quyền hạn:**
+      - Kỹ thuật viên: Chỉ xem tầng được phân công trong bảng technician_assignments
+      - Admin/Tổ trưởng: Xem tất cả tầng tòa nhà
+      
+      **Sử dụng khi:**
+      - Hiển thị danh sách tầng có thể báo lỗi
+      - Filter rooms theo tầng được phân công
+      - Kiểm tra phạm vi công việc của kỹ thuật viên
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách tầng được phân công thành công",
+    schema: {
+      example: {
+        assignedFloors: [
+          {
+            building: "B",
+            floor: "1",
+            pendingRequests: 3,
+            inProgressRequests: 2,
+            waitingReplacementRequests: 1,
+          },
+          {
+            building: "B",
+            floor: "2",
+            pendingRequests: 1,
+            inProgressRequests: 0,
+            waitingReplacementRequests: 0,
+          },
+        ],
+        totalAssignedFloors: 2,
+        totalPendingRequests: 4,
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: "Không có quyền xem danh sách tầng được phân công",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getAssignedFloors(@CurrentUser() user: User) {
+    return this.repairsService.getAssignedFloors(user);
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

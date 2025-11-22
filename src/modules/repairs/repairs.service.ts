@@ -1447,6 +1447,34 @@ export class RepairsService {
   }
 
   /**
+   * Kiểm tra kỹ thuật viên có được phân công cho tầng/tòa nhà cụ thể không
+   * - Kiểm tra assignment theo tầng cụ thể (building + floor)
+   * - Kiểm tra assignment theo cả tòa nhà (building + floor = null)
+   * @param technicianId - ID kỹ thuật viên
+   * @param building - Tên tòa nhà
+   * @param floor - Tên tầng
+   * @returns boolean - true nếu được phân công, false nếu không
+   */
+  private async isTechnicianAssignedToFloor(
+    technicianId: string,
+    building: string,
+    floor: string
+  ): Promise<boolean> {
+    // Sử dụng query builder để kiểm tra assignment theo tầng cụ thể hoặc cả tòa nhà
+    // Logic: (building = X AND floor = Y) OR (building = X AND floor IS NULL)
+    const assignment = await this.technicianAssignmentRepository
+      .createQueryBuilder("assignment")
+      .where("assignment.technicianId = :technicianId", { technicianId })
+      .andWhere("assignment.building = :building", { building })
+      .andWhere("(assignment.floor = :floor OR assignment.floor IS NULL)", {
+        floor,
+      })
+      .getOne();
+
+    return !!assignment;
+  }
+
+  /**
    * Tạo repair log entry
    * @param repairRequestId - ID của yêu cầu sửa chữa
    * @param actor - Người thực hiện hành động
@@ -1610,6 +1638,46 @@ export class RepairsService {
     // Validate business logic nếu có finalStatus
     if (createDto.finalStatus) {
       this.validateCreateAndProcess(createDto);
+    }
+
+    // 0. Kiểm tra quyền truy cập tầng tòa nhà cho kỹ thuật viên
+    // Admin và tổ trưởng kỹ thuật không cần kiểm tra, chỉ kỹ thuật viên thường mới cần
+    const isRegularTechnician = 
+      this.isUserTechnician(currentUser) && 
+      !this.isAdmin(currentUser) &&
+      !currentUser.roles?.some((role) => role.code === "TO_TRUONG_KY_THUAT");
+    
+    if (isRegularTechnician) {
+      // Lấy thông tin asset để kiểm tra building và floor
+      const asset = await this.assetRepository.findOne({
+        where: { id: createDto.computerAssetId },
+        relations: ["currentRoom"],
+      });
+
+      if (!asset) {
+        throw new NotFoundException(
+          `Không tìm thấy tài sản với ID: ${createDto.computerAssetId}`
+        );
+      }
+
+      if (!asset.currentRoom) {
+        throw new BadRequestException(
+          "Tài sản này chưa được gán vào phòng, không thể báo lỗi"
+        );
+      }
+
+      // Kiểm tra kỹ thuật viên có được phân công cho tầng/tòa nhà này không
+      const isAssigned = await this.isTechnicianAssignedToFloor(
+        currentUser.id,
+        asset.currentRoom.building,
+        asset.currentRoom.floor
+      );
+
+      if (!isAssigned) {
+        throw new ForbiddenException(
+          `Bạn không được phân công cho tầng ${asset.currentRoom.floor} tòa ${asset.currentRoom.building}. Chỉ có thể báo lỗi ở các tầng tòa được phân công.`
+        );
+      }
     }
 
     // 1. Tạo repair request sử dụng logic create() hiện tại
