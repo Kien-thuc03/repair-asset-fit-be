@@ -83,17 +83,25 @@ export class RepairsService {
       );
     }
 
-    // 3. Kiểm tra tài sản có đang được sửa chữa không
+    // 3. Kiểm tra tài sản có đang được sửa chữa không (kiểm tra TẤT CẢ trạng thái chưa hoàn thành)
     const existingRepair = await this.repairRequestRepository.findOne({
       where: {
         computerAssetId: createDto.computerAssetId,
-        status: RepairStatus.ĐANG_XỬ_LÝ,
+        status: In([
+          RepairStatus.CHỜ_TIẾP_NHẬN,
+          RepairStatus.ĐÃ_TIẾP_NHẬN,
+          RepairStatus.ĐANG_XỬ_LÝ,
+          RepairStatus.CHỜ_THAY_THẾ,
+        ]),
+      },
+      order: {
+        createdAt: "DESC",
       },
     });
 
     if (existingRepair) {
       throw new ConflictException(
-        `Tài sản này đang có yêu cầu sửa chữa đang xử lý (${existingRepair.requestCode})`
+        `Máy này đang có yêu cầu sửa chữa chưa hoàn thành (${existingRepair.requestCode} - ${existingRepair.status}). Vui lòng chọn máy khác hoặc đợi yêu cầu hiện tại hoàn thành.`
       );
     }
 
@@ -214,7 +222,9 @@ export class RepairsService {
         .getMany();
 
       if (computerSoftwareList.length !== createDto.softwareIds.length) {
-        const foundSoftwareIds = computerSoftwareList.map((cs) => cs.softwareId);
+        const foundSoftwareIds = computerSoftwareList.map(
+          (cs) => cs.softwareId
+        );
         const notFoundIds = createDto.softwareIds.filter(
           (id) => !foundSoftwareIds.includes(id)
         );
@@ -259,9 +269,13 @@ export class RepairsService {
         if (component.status === ComponentStatus.INSTALLED) {
           component.status = ComponentStatus.FAULTY;
           await this.computerComponentRepository.save(component);
-          console.log(`✅ [create] Component ${component.id} (${component.name}): INSTALLED → FAULTY`);
+          console.log(
+            `✅ [create] Component ${component.id} (${component.name}): INSTALLED → FAULTY`
+          );
         } else {
-          console.log(`ℹ️ [create] Component ${component.id} (${component.name}): Already ${component.status}, skip update`);
+          console.log(
+            `ℹ️ [create] Component ${component.id} (${component.name}): Already ${component.status}, skip update`
+          );
         }
       }
     }
@@ -554,9 +568,9 @@ export class RepairsService {
 
     // Cập nhật thông tin (chỉ update những field có giá trị thực sự)
     const { componentIds, ...dataToUpdate } = updateDto;
-    
+
     // Chỉ assign những properties không phải undefined để tránh ghi đè null
-    Object.keys(dataToUpdate).forEach(key => {
+    Object.keys(dataToUpdate).forEach((key) => {
       if (dataToUpdate[key] !== undefined) {
         repairRequest[key] = dataToUpdate[key];
       }
@@ -571,9 +585,13 @@ export class RepairsService {
       await this.repairRequestRepository.save(repairRequest);
 
     // ⚠️ Cập nhật trạng thái component thành FAULTY khi chuyển sang CHỜ_THAY_THẾ
-    if (updateDto.status === RepairStatus.CHỜ_THAY_THẾ && componentIds && componentIds.length > 0) {
+    if (
+      updateDto.status === RepairStatus.CHỜ_THAY_THẾ &&
+      componentIds &&
+      componentIds.length > 0
+    ) {
       const components = await this.computerComponentRepository.findBy({
-        id: In(componentIds)
+        id: In(componentIds),
       });
 
       for (const component of components) {
@@ -582,9 +600,13 @@ export class RepairsService {
         if (component.status === ComponentStatus.INSTALLED) {
           component.status = ComponentStatus.FAULTY;
           await this.computerComponentRepository.save(component);
-          console.log(`✅ [update] Component ${component.id} (${component.name}): INSTALLED → FAULTY`);
+          console.log(
+            `✅ [update] Component ${component.id} (${component.name}): INSTALLED → FAULTY`
+          );
         } else {
-          console.log(`ℹ️ [update] Component ${component.id} (${component.name}): Already ${component.status}, skip update`);
+          console.log(
+            `ℹ️ [update] Component ${component.id} (${component.name}): Already ${component.status}, skip update`
+          );
         }
       }
 
@@ -973,7 +995,8 @@ export class RepairsService {
       "Bắt đầu xử lý yêu cầu",
       oldStatus,
       RepairStatus.ĐANG_XỬ_LÝ,
-      startDto.processingNotes || `Kỹ thuật viên ${currentUser.fullName} bắt đầu xử lý`
+      startDto.processingNotes ||
+        `Kỹ thuật viên ${currentUser.fullName} bắt đầu xử lý`
     );
 
     return this.findOne(id);
@@ -1571,7 +1594,7 @@ export class RepairsService {
   /**
    * Ghi nhận và xử lý lỗi trực tiếp tại hiện trường
    * Endpoint cho kỹ thuật viên để tạo repair request VÀ cập nhật kết quả xử lý trong 1 lần
-   * 
+   *
    * ⚠️ LƯU Ý: Status chỉ có thể set thành ĐANG_XỬ_LÝ hoặc ĐÃ_HOÀN_THÀNH
    * - ĐANG_XỬ_LÝ: Khi cần thay thế linh kiện (sẽ chuyển sang CHỜ_THAY_THẾ khi phiếu đề xuất được duyệt)
    * - ĐÃ_HOÀN_THÀNH: Khi đã sửa xong không cần thay thế
@@ -1599,13 +1622,10 @@ export class RepairsService {
     await queryRunner.startTransaction();
 
     try {
-      const requestToUpdate = await queryRunner.manager.findOne(
-        RepairRequest,
-        {
-          where: { id: repairRequest.id },
-          relations: ["computerAsset"],
-        }
-      );
+      const requestToUpdate = await queryRunner.manager.findOne(RepairRequest, {
+        where: { id: repairRequest.id },
+        relations: ["computerAsset"],
+      });
 
       if (!requestToUpdate) {
         throw new NotFoundException("Không tìm thấy repair request vừa tạo");
@@ -1614,7 +1634,7 @@ export class RepairsService {
       // Tự động gán kỹ thuật viên và set status ĐANG_XỬ_LÝ
       requestToUpdate.assignedTechnicianId = currentUser.id;
       requestToUpdate.status = RepairStatus.ĐANG_XỬ_LÝ;
-      
+
       // Lưu ghi chú xử lý nếu có
       if (createDto.resolutionNotes) {
         requestToUpdate.resolutionNotes = createDto.resolutionNotes;
@@ -1637,7 +1657,7 @@ export class RepairsService {
         requestToUpdate.status = RepairStatus.CHỜ_THAY_THẾ;
         // Không set completedAt vì chưa hoàn thành
         // Asset status vẫn giữ DAMAGED vì cần thay thế linh kiện
-        
+
         // ⚠️ LƯU Ý: KHÔNG cập nhật component status ở đây!
         // Component status chỉ chuyển sang PENDING_REPLACEMENT khi:
         // 1. Kỹ thuật viên TẠO replacement proposal
@@ -1675,7 +1695,8 @@ export class RepairsService {
           "Linh kiện cần thay thế",
           RepairStatus.ĐANG_XỬ_LÝ,
           RepairStatus.CHỜ_THAY_THẾ,
-          createDto.resolutionNotes || "Linh kiện không thể sửa chữa, cần thay thế"
+          createDto.resolutionNotes ||
+            "Linh kiện không thể sửa chữa, cần thay thế"
         );
       }
 
@@ -1706,7 +1727,10 @@ export class RepairsService {
   ): void {
     // 1. Validate: finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH, CHỜ_THAY_THẾ hoặc không set (default ĐANG_XỬ_LÝ)
     if (dto.finalStatus) {
-      const allowedStatuses = [RepairStatus.ĐÃ_HOÀN_THÀNH, RepairStatus.CHỜ_THAY_THẾ];
+      const allowedStatuses = [
+        RepairStatus.ĐÃ_HOÀN_THÀNH,
+        RepairStatus.CHỜ_THAY_THẾ,
+      ];
       if (!allowedStatuses.includes(dto.finalStatus)) {
         throw new BadRequestException(
           `finalStatus chỉ có thể là ĐÃ_HOÀN_THÀNH hoặc CHỜ_THAY_THẾ`
