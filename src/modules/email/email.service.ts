@@ -119,7 +119,7 @@ export class EmailService {
                             <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>
                             <p>Vui lòng nhấp vào nút bên dưới để đặt lại mật khẩu:</p>
                             <div style="text-align: center;">
-                                <a href="${resetUrl}" class="button">Đặt lại mật khẩu</a>
+                                <a href="${resetUrl}" class="button text-white">Đặt lại mật khẩu</a>
                             </div>
                             <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
                             <p style="word-break: break-all; color: #2563eb;">${resetUrl}</p>
