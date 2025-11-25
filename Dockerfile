@@ -8,7 +8,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Copy package files for dependency resolution
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 # Build stage
 FROM base AS builder
@@ -36,7 +36,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Copy package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 # Install only production dependencies
 RUN pnpm install --frozen-lockfile --prod
