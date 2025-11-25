@@ -27,6 +27,12 @@ export class EmailService {
                 user: smtpUser,
                 pass: smtpPass,
             } : undefined,
+            connectionTimeout: 10000, // 10 seconds
+            greetingTimeout: 5000, // 5 seconds
+            socketTimeout: 10000, // 10 seconds
+            pool: true, // Use connection pooling
+            maxConnections: 1,
+            maxMessages: 3,
         });
 
         this.logger.log(`Email service initialized with host: ${smtpHost}:${smtpPort}`);
@@ -152,9 +158,19 @@ export class EmailService {
                 throw new Error('Cấu hình email chưa được thiết lập. Vui lòng liên hệ quản trị viên.');
             }
 
-            // Verify connection trước khi gửi
-            await this.transporter.verify();
-            this.logger.log('✅ SMTP connection verified');
+            // Verify connection trước khi gửi (với timeout)
+            try {
+                await Promise.race([
+                    this.transporter.verify(),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Connection verification timeout')), 8000)
+                    )
+                ]);
+                this.logger.log('✅ SMTP connection verified');
+            } catch (verifyError) {
+                this.logger.warn('⚠️ SMTP verification failed, but attempting to send email anyway:', verifyError);
+                // Tiếp tục gửi email dù verify fail (một số SMTP server không hỗ trợ verify)
+            }
 
             await this.transporter.sendMail(mailOptions);
             this.logger.log(`✅ Password reset email sent successfully to ${email}`);
