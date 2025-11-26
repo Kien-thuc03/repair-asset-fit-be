@@ -61,11 +61,9 @@ services:
       # JWT Configuration
       - JWT_SECRET=${JWT_SECRET}
       
-      # SMTP Configuration
-      - SMTP_HOST=smtp.gmail.com
-      - SMTP_PORT=587
-      - SMTP_USER=your-email@gmail.com
-      - SMTP_PASS=your-app-password
+      # SendGrid Configuration
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - SENDGRID_EMAIL_FROM=${SENDGRID_EMAIL_FROM}
 
       # CLOUDFLARE R2
       - CLOUDFLARE_R2_ENDPOINT=${CLOUDFLARE_R2_ENDPOINT}
