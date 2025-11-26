@@ -641,4 +641,176 @@ export class ComputerController {
       replaceMultipleDto
     );
   }
+
+  /**
+   * GET /computer/:computerId/qr-code
+   * Generate QR code cho máy tính
+   * QR code chứa computerId để quét và tự động điền thông tin khi tạo repair request
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Base64 string của QR code image
+   */
+  @Get(":computerId/qr-code")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Generate QR code cho máy tính",
+    description: `
+      API tạo QR code cho máy tính để người dùng quét bằng mobile/tablet.
+      
+      **QR code chứa:**
+      - computerId: UUID của máy tính
+      - type: REPAIR_REQUEST
+      - timestamp: Thời gian tạo QR
+      
+      **Sử dụng khi:**
+      - In QR code dán lên máy tính
+      - Hiển thị QR code trên màn hình
+      - Người dùng cần báo lỗi nhanh bằng mobile
+      
+      **Quy trình:**
+      1. Người dùng quét QR code bằng camera mobile/tablet
+      2. App đọc computerId từ QR
+      3. Gọi API /computer/:computerId/repair-info để lấy thông tin
+      4. Tự động điền thông tin vào form tạo repair request
+      
+      **Response:**
+      - Base64 string của QR code image (data:image/png;base64,...)
+      - Có thể hiển thị trực tiếp trong <img> tag
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Generate QR code thành công",
+    schema: {
+      example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  async generateQRCode(@Param("computerId") computerId: string) {
+    const qrCode = await this.computerService.generateQRCode(computerId);
+    return qrCode;
+  }
+
+  /**
+   * GET /computer/:computerId/repair-info
+   * Lấy thông tin máy tính để tạo repair request từ QR code
+   * Trả về tất cả thông tin cần thiết để auto-fill form
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Thông tin đầy đủ của máy tính để tạo repair request
+   */
+  @Get(":computerId/repair-info")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin máy tính để tạo repair request từ QR code",
+    description: `
+      API lấy thông tin máy tính sau khi quét QR code.
+      Trả về tất cả thông tin cần thiết để tự động điền vào form tạo repair request.
+      
+      **Thông tin trả về:**
+      - **Computer**: ID, số máy, ghi chú
+      - **Asset**: ID (computerAssetId cho repair request), mã KT, tên, thông số, trạng thái
+      - **Room**: Vị trí (tòa nhà, tầng, phòng)
+      - **Available Components**: Danh sách linh kiện có thể báo lỗi (status = INSTALLED)
+      - **Installed Software**: Danh sách phần mềm đã cài đặt
+      - **Has Active Repair**: Kiểm tra máy đang có yêu cầu sửa chữa chưa
+      
+      **Auto-fill logic:**
+      - computerAssetId: asset.id ← Bắt buộc, tự động điền
+      - Room info: Hiển thị thông tin vị trí máy
+      - Components list: Cho phép chọn linh kiện bị lỗi
+      - Software list: Cho phép chọn phần mềm gặp sự cố
+      - errorType: Người dùng phải chọn
+      - description: Người dùng phải nhập
+      
+      **Use case:**
+      1. Mobile app quét QR code → lấy computerId
+      2. Gọi API này với computerId
+      3. Tự động điền computerAssetId vào form
+      4. Hiển thị thông tin máy và vị trí
+      5. Cho phép chọn components/software bị lỗi
+      6. Người dùng chọn errorType và nhập description
+      7. Submit form tạo repair request
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy thông tin thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Lấy thông tin máy tính thành công",
+        data: {
+          computer: {
+            id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+            machineLabel: "01",
+            notes: null,
+          },
+          asset: {
+            id: "e7e6a875-7ca7-4994-81ff-98b2be25d557",
+            ktCode: "19-0210/01",
+            fixedCode: "FX-2024-001",
+            name: "Máy vi tính để bàn đồng bộ - Dell OptiPlex 3010 MT",
+            specs: "Intel Core i5, 8GB RAM, 256GB SSD",
+            status: "IN_USE",
+            categoryName: "Máy tính",
+          },
+          room: {
+            id: "room-id",
+            name: "A01.03",
+            roomNumber: "A01.03",
+            roomCode: "A01.03",
+            building: "A",
+            floor: "1",
+            unitName: "Khoa CNTT",
+          },
+          availableComponents: [
+            {
+              id: "component-1",
+              componentType: "CPU",
+              name: "Intel Core i5",
+              componentSpecs: "Intel Core i5-10400",
+              serialNumber: "SN123456",
+            },
+            {
+              id: "component-2",
+              componentType: "RAM",
+              name: "RAM",
+              componentSpecs: "16GB DDR4 3200MHz",
+              serialNumber: null,
+            },
+          ],
+          installedSoftware: [
+            {
+              id: "software-1",
+              name: "Microsoft Office",
+              version: "2021",
+              publisher: "Microsoft",
+              installationDate: "2024-01-15",
+            },
+          ],
+          hasActiveRepair: false,
+          activeRepairInfo: null,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  getComputerRepairInfo(@Param("computerId") computerId: string) {
+    return this.computerService.getComputerRepairInfo(computerId);
+  }
 }

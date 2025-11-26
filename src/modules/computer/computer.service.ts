@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder, DataSource } from "typeorm";
+import { Repository, SelectQueryBuilder, DataSource, In } from "typeorm";
 import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
@@ -21,6 +21,7 @@ import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
 import { AssetStatus } from "../../common/shared/AssetStatus";
+import * as QRCode from "qrcode";
 
 @Injectable()
 export class ComputerService {
@@ -1256,5 +1257,173 @@ export class ComputerService {
         },
       };
     });
+  }
+
+  /**
+   * Generate QR code cho computer
+   * QR code chứa computerId để người dùng quét và tự động điền thông tin
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Base64 string của QR code image
+   * @throws NotFoundException nếu không tìm thấy máy tính
+   */
+  async generateQRCode(computerId: string): Promise<string> {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    // Kiểm tra máy tính có tồn tại không
+    const computer = await this.computerRepository.findOne({
+      where: { id: computerId },
+      relations: ["asset", "room"],
+    });
+
+    if (!computer) {
+      throw new NotFoundException(
+        `Không tìm thấy máy tính với ID: ${computerId}`
+      );
+    }
+
+    try {
+      // Tạo data object để encode vào QR
+      const qrData = {
+        type: "REPAIR_REQUEST",
+        computerId: computer.id,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Generate QR code dưới dạng base64 string
+      const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
+        errorCorrectionLevel: "H",
+        type: "image/png",
+        width: 300,
+        margin: 1,
+      });
+
+      return qrCodeDataURL;
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+      throw new BadRequestException("Không thể tạo QR code");
+    }
+  }
+
+  /**
+   * Lấy thông tin máy tính để tạo repair request từ QR code
+   * Trả về tất cả thông tin cần thiết để auto-fill form
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Thông tin máy tính và components để tạo repair request
+   * @throws NotFoundException nếu không tìm thấy máy tính
+   */
+  async getComputerRepairInfo(computerId: string) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    // Lấy thông tin máy tính đầy đủ
+    const computer = await this.computerRepository.findOne({
+      where: { id: computerId },
+      relations: [
+        "asset",
+        "asset.category",
+        "room",
+        "room.unit",
+        "components",
+        "software",
+        "software.software",
+      ],
+    });
+
+    if (!computer) {
+      throw new NotFoundException(
+        `Không tìm thấy máy tính với ID: ${computerId}`
+      );
+    }
+
+    // Kiểm tra máy tính có đang được sửa chữa không
+    const activeRepairRequest = await this.repairRequestRepository.findOne({
+      where: {
+        computerAssetId: computer.assetId,
+        status: In([
+          RepairStatus.CHỜ_TIẾP_NHẬN,
+          RepairStatus.ĐÃ_TIẾP_NHẬN,
+          RepairStatus.ĐANG_XỬ_LÝ,
+          RepairStatus.CHỜ_THAY_THẾ,
+        ]),
+      },
+      order: { createdAt: "DESC" },
+    });
+
+    // Lấy danh sách components có thể báo lỗi (status = INSTALLED)
+    const availableComponents =
+      computer.components
+        ?.filter((c) => c.status === ComponentStatus.INSTALLED)
+        .map((c) => ({
+          id: c.id,
+          componentType: c.componentType,
+          name: c.name,
+          componentSpecs: c.componentSpecs,
+          serialNumber: c.serialNumber,
+        })) || [];
+
+    // Lấy danh sách software đã cài đặt
+    const installedSoftware =
+      computer.software?.map((cs) => ({
+        id: cs.software.id,
+        name: cs.software.name,
+        version: cs.software.version,
+        publisher: cs.software.publisher,
+        installationDate: cs.installationDate,
+      })) || [];
+
+    return {
+      success: true,
+      message: "Lấy thông tin máy tính thành công",
+      data: {
+        computer: {
+          id: computer.id,
+          machineLabel: computer.machineLabel,
+          notes: computer.notes,
+        },
+        asset: {
+          id: computer.asset.id,
+          ktCode: computer.asset.ktCode,
+          fixedCode: computer.asset.fixedCode,
+          name: computer.asset.name,
+          specs: computer.asset.specs,
+          status: computer.asset.status,
+          categoryName: computer.asset.category?.name,
+        },
+        room: computer.room
+          ? {
+              id: computer.room.id,
+              name: computer.room.name,
+              roomNumber: computer.room.roomNumber,
+              roomCode: computer.room.roomCode,
+              building: computer.room.building,
+              floor: computer.room.floor,
+              unitName: computer.room.unit?.name,
+            }
+          : null,
+        availableComponents,
+        installedSoftware,
+        hasActiveRepair: !!activeRepairRequest,
+        activeRepairInfo: activeRepairRequest
+          ? {
+              id: activeRepairRequest.id,
+              requestCode: activeRepairRequest.requestCode,
+              status: activeRepairRequest.status,
+              description: activeRepairRequest.description,
+              createdAt: activeRepairRequest.createdAt,
+            }
+          : null,
+      },
+    };
   }
 }
