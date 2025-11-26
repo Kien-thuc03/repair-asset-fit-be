@@ -17,13 +17,21 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiBody,
 } from "@nestjs/swagger";
 import { ComputerService } from "./computer.service";
 import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
-import { GetComputersFilterDto, GetComputersResponseDto } from "./dto/get-computers-filter.dto";
+import {
+  GetComputersFilterDto,
+  GetComputersResponseDto,
+} from "./dto/get-computers-filter.dto";
 import { GetComputerDetailResponseDto } from "./dto/get-computer-detail-response.dto";
+import {
+  ReplaceComponentDto,
+  ReplaceMultipleComponentsDto,
+} from "./dto/replace-component.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -181,7 +189,8 @@ export class ComputerController {
 
   @Get("current-user/available-components")
   @ApiOperation({
-    summary: "Lấy danh sách TẤT CẢ linh kiện có status = FAULTY để lập đề xuất thay thế",
+    summary:
+      "Lấy danh sách TẤT CẢ linh kiện có status = FAULTY để lập đề xuất thay thế",
     description: `
       Lấy danh sách TẤT CẢ linh kiện có trạng thái FAULTY để kỹ thuật viên có thể lập đề xuất thay thế.
       
@@ -231,7 +240,21 @@ export class ComputerController {
     required: false,
     description: "Lọc theo loại linh kiện (có thể truyền nhiều giá trị)",
     isArray: true,
-    enum: ["CPU", "RAM", "GPU", "STORAGE", "MAINBOARD", "PSU", "COOLER", "MONITOR", "KEYBOARD", "MOUSE", "NETWORK_CARD", "SOUND_CARD", "OTHER"],
+    enum: [
+      "CPU",
+      "RAM",
+      "GPU",
+      "STORAGE",
+      "MAINBOARD",
+      "PSU",
+      "COOLER",
+      "MONITOR",
+      "KEYBOARD",
+      "MOUSE",
+      "NETWORK_CARD",
+      "SOUND_CARD",
+      "OTHER",
+    ],
     example: ["RAM", "CPU"],
   })
   @ApiQuery({
@@ -340,5 +363,216 @@ export class ComputerController {
     @CurrentUser() user: User
   ) {
     return this.computerService.getAvailableComponents(filter, user);
+  }
+
+  /**
+   * PATCH /computer/:computerId/replace-component
+   * Thay thế một linh kiện trong máy tính
+   * Cập nhật status linh kiện cũ thành REMOVED và thêm linh kiện mới với status INSTALLED
+   *
+   * @param computerId - UUID của máy tính
+   * @param replaceDto - Thông tin thay thế linh kiện
+   * @returns Thông tin linh kiện cũ và mới
+   */
+  @Patch(":computerId/replace-component")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Thay thế một linh kiện trong máy tính",
+    description: `
+      API thay thế một linh kiện trong máy tính khi có linh kiện mới.
+      
+      **Quy trình:**
+      1. Cập nhật status linh kiện cũ thành REMOVED và set removedAt
+      2. Tạo linh kiện mới với status INSTALLED và set installedAt
+      3. Linh kiện mới sẽ kế thừa componentType từ linh kiện cũ
+      
+      **Dữ liệu cần truyền:**
+      - oldComponentId: UUID của linh kiện cũ cần thay thế
+      - newItemName: Tên linh kiện mới
+      - newItemSpecs: Thông số kỹ thuật linh kiện mới
+      - serialNumber (optional): Số serial linh kiện mới
+      - notes (optional): Ghi chú về việc thay thế
+      
+      **Sử dụng khi:**
+      - Hoàn thành đề xuất thay thế linh kiện
+      - Kỹ thuật viên đã thay thế linh kiện thành công
+      - Cần cập nhật thông tin linh kiện trong hệ thống
+      
+      **Lưu ý:**
+      - Linh kiện cũ phải thuộc máy tính được chỉ định
+      - Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+      - Tự động ghi lại thời gian thay thế
+    `,
+  })
+  @ApiBody({ type: ReplaceComponentDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Thay thế linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Thay thế linh kiện RAM thành công",
+        data: {
+          computer: {
+            id: "123e4567-e89b-12d3-a456-426614174000",
+            machineLabel: "01",
+            assetName: "PC ASUS VivoBook",
+          },
+          oldComponent: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            name: "RAM",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            status: "REMOVED",
+            removedAt: "2025-11-26T10:00:00.000Z",
+          },
+          newComponent: {
+            id: "789e4567-e89b-12d3-a456-426614174999",
+            name: "RAM Kingston",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR4 3200MHz",
+            serialNumber: "SN123456789",
+            status: "INSTALLED",
+            installedAt: "2025-11-26T10:00:00.000Z",
+            notes: "Thay thế cho linh kiện RAM",
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính hoặc linh kiện",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Linh kiện không thuộc máy tính này",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  replaceComponent(
+    @Param("computerId") computerId: string,
+    @Body() replaceDto: ReplaceComponentDto
+  ) {
+    return this.computerService.replaceComponent(computerId, replaceDto);
+  }
+
+  /**
+   * PATCH /computer/:computerId/replace-multiple-components
+   * Thay thế nhiều linh kiện trong máy tính cùng lúc
+   * Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện
+   *
+   * @param computerId - UUID của máy tính
+   * @param replaceMultipleDto - Danh sách các linh kiện cần thay thế
+   * @returns Thông tin tất cả các linh kiện đã được thay thế
+   */
+  @Patch(":computerId/replace-multiple-components")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Thay thế nhiều linh kiện trong máy tính cùng lúc",
+    description: `
+      API thay thế nhiều linh kiện trong máy tính cùng một lúc.
+      Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện.
+      
+      **Quy trình:**
+      1. Kiểm tra tất cả linh kiện cũ có tồn tại và thuộc máy tính này
+      2. Cập nhật status tất cả linh kiện cũ thành REMOVED
+      3. Tạo tất cả linh kiện mới với status INSTALLED
+      4. Sử dụng transaction để đảm bảo tính nhất quán
+      
+      **Dữ liệu trả về:**
+      - Thông tin máy tính
+      - Danh sách tất cả linh kiện đã được thay thế (cũ và mới)
+      - Tổng số linh kiện đã thay thế
+      
+      **Sử dụng khi:**
+      - Hoàn thành đề xuất thay thế nhiều linh kiện
+      - Bảo trì/nâng cấp hàng loạt
+      - Thay thế nhiều linh kiện cùng lúc để tiết kiệm thời gian
+      
+      **Ưu điểm:**
+      - Thực hiện tất cả thay đổi trong một transaction
+      - Đảm bảo tính nhất quán dữ liệu
+      - Hiệu suất tốt hơn so với gọi API nhiều lần
+    `,
+  })
+  @ApiBody({ type: ReplaceMultipleComponentsDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Thay thế nhiều linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Thay thế 2 linh kiện thành công",
+        data: {
+          computer: {
+            id: "123e4567-e89b-12d3-a456-426614174000",
+            machineLabel: "01",
+            assetName: "PC ASUS VivoBook",
+            roomName: "A01.03",
+          },
+          replacedComponents: [
+            {
+              oldComponent: {
+                id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+                name: "RAM",
+                componentType: "RAM",
+                status: "REMOVED",
+                removedAt: "2025-11-26T10:00:00.000Z",
+              },
+              newComponent: {
+                id: "789e4567-e89b-12d3-a456-426614174999",
+                name: "RAM Kingston",
+                componentType: "RAM",
+                componentSpecs: "16GB DDR4 3200MHz",
+                status: "INSTALLED",
+                installedAt: "2025-11-26T10:00:00.000Z",
+              },
+            },
+            {
+              oldComponent: {
+                id: "c68b1ebf-b35f-458b-9006-dda5458c8bc6",
+                name: "MAINBOARD",
+                componentType: "MAINBOARD",
+                status: "REMOVED",
+                removedAt: "2025-11-26T10:00:00.000Z",
+              },
+              newComponent: {
+                id: "999e4567-e89b-12d3-a456-426614174888",
+                name: "MSI H610M",
+                componentType: "MAINBOARD",
+                componentSpecs: "MSI H610M-A PRO",
+                status: "INSTALLED",
+                installedAt: "2025-11-26T10:00:00.000Z",
+              },
+            },
+          ],
+          totalReplaced: 2,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính hoặc linh kiện",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Linh kiện không thuộc máy tính này hoặc danh sách trống",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  replaceMultipleComponents(
+    @Param("computerId") computerId: string,
+    @Body() replaceMultipleDto: ReplaceMultipleComponentsDto
+  ) {
+    return this.computerService.replaceMultipleComponents(
+      computerId,
+      replaceMultipleDto
+    );
   }
 }
