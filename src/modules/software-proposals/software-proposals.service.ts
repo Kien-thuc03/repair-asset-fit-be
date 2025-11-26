@@ -78,11 +78,7 @@ export class SoftwareProposalsService {
     const existingProposal = await this.softwareProposalRepository.findOne({
       where: {
         roomId: createDto.roomId,
-        status: In([
-          SoftwareProposalStatus.CHỜ_DUYỆT,
-          SoftwareProposalStatus.ĐÃ_DUYỆT,
-          SoftwareProposalStatus.ĐANG_TRANG_BỊ,
-        ]),
+        status: In([SoftwareProposalStatus.CHỜ_DUYỆT]),
       },
       order: {
         createdAt: "DESC",
@@ -875,6 +871,7 @@ export class SoftwareProposalsService {
   /**
    * Tự động phân công kỹ thuật viên phù hợp dựa trên vị trí phòng
    * - Tìm các KTV được phân công cho tầng hoặc tòa nhà
+   * - Ưu tiên KTV được phân công cho tầng cụ thể
    * - Chọn KTV có ít đề xuất đang xử lý nhất
    * @param roomId - ID phòng
    * @param building - Tên tòa nhà
@@ -899,12 +896,27 @@ export class SoftwareProposalsService {
       return null;
     }
 
-    // 2. Lấy danh sách technicianId
-    const technicianIds = assignments.map((a) => a.technicianId);
+    // 2. Ưu tiên KTV được phân công cho tầng cụ thể
+    // Tách thành 2 nhóm: tầng cụ thể và cả tòa nhà
+    const floorSpecificAssignments = assignments.filter(
+      (a) => a.floor === floor
+    );
+    const buildingWideAssignments = assignments.filter((a) => a.floor === null);
 
-    // 3. Đếm số đề xuất đang xử lý của mỗi kỹ thuật viên
+    // Nếu có KTV cho tầng cụ thể, ưu tiên chọn từ nhóm này
+    const priorityAssignments =
+      floorSpecificAssignments.length > 0
+        ? floorSpecificAssignments
+        : buildingWideAssignments;
+
+    // 3. Loại bỏ technicianId trùng lặp và lấy danh sách unique
+    const uniqueTechnicianIds = Array.from(
+      new Set(priorityAssignments.map((a) => a.technicianId))
+    );
+
+    // 4. Đếm số đề xuất đang xử lý của mỗi kỹ thuật viên
     const techniciansWithWorkload = await Promise.all(
-      technicianIds.map(async (technicianId) => {
+      uniqueTechnicianIds.map(async (technicianId) => {
         const activeProposalsCount =
           await this.softwareProposalRepository.count({
             where: [
@@ -914,7 +926,7 @@ export class SoftwareProposalsService {
             ],
           });
 
-        const technician = assignments.find(
+        const technician = priorityAssignments.find(
           (a) => a.technicianId === technicianId
         )?.technician;
 
@@ -925,7 +937,7 @@ export class SoftwareProposalsService {
       })
     );
 
-    // 4. Chọn kỹ thuật viên có workload thấp nhất
+    // 5. Chọn kỹ thuật viên có workload thấp nhất
     const sortedTechnicians = techniciansWithWorkload
       .filter((t) => t.technician) // Loại bỏ null
       .sort((a, b) => a.workload - b.workload);
