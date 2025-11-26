@@ -162,6 +162,72 @@ export class ComputerController {
   }
 
   /**
+   * GET /computer/component/:componentId
+   * Lấy thông tin chi tiết một component theo ID
+   * Trả về thông tin component và computer chứa component đó
+   *
+   * @param componentId - UUID của component
+   * @returns Thông tin component và computer
+   */
+  @Get("component/:componentId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin chi tiết một component theo ID",
+    description: `
+      API lấy thông tin chi tiết của một component và computer chứa component đó.
+      
+      **Thông tin trả về:**
+      - Component: ID, loại, tên, thông số, serial, status, ngày lắp/tháo, ghi chú
+      - Computer: ID, số máy, thông tin asset (ID, tên, mã KT, mã TSCĐ, trạng thái), thông tin phòng
+      
+      **Use case:**
+      - Lấy computerId từ componentId để gọi API replace component
+      - Xem thông tin chi tiết component và máy tính chứa nó
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy thông tin component thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Lấy thông tin component thành công",
+        data: {
+          component: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            componentType: "RAM",
+            name: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            status: "PENDING_REPLACEMENT",
+            installedAt: "2024-01-15T10:00:00.000Z",
+          },
+          computer: {
+            id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+            machineLabel: "01",
+            asset: {
+              id: "e7e6a875-7ca7-4994-81ff-98b2be25d557",
+              name: "Máy vi tính để bàn đồng bộ",
+              ktCode: "19-0210/01",
+            },
+            room: {
+              id: "room-id",
+              name: "A01.03",
+              roomCode: "A01.03",
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Không tìm thấy component",
+  })
+  getComponentById(@Param("componentId") componentId: string) {
+    return this.computerService.getComponentById(componentId);
+  }
+
+  /**
    * GET /computer/:computerId/components
    * Lấy tất cả components của một máy tính cụ thể
    *
