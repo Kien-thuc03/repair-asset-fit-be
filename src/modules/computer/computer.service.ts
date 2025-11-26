@@ -1,11 +1,19 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder } from "typeorm";
+import { Repository, SelectQueryBuilder, DataSource, In } from "typeorm";
 import { CreateComputerDto } from "./dto/create-computer.dto";
 import { UpdateComputerDto } from "./dto/update-computer.dto";
 import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
 import { GetComputersFilterDto } from "./dto/get-computers-filter.dto";
 import { GetComputerDetailResponseDto } from "./dto/get-computer-detail-response.dto";
+import {
+  ReplaceComponentDto,
+  ReplaceMultipleComponentsDto,
+} from "./dto/replace-component.dto";
 import { Computer } from "../../entities/computer.entity";
 import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
@@ -13,6 +21,7 @@ import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
 import { AssetStatus } from "../../common/shared/AssetStatus";
+import * as QRCode from "qrcode";
 
 @Injectable()
 export class ComputerService {
@@ -22,7 +31,8 @@ export class ComputerService {
     @InjectRepository(ComputerComponent)
     private readonly componentRepository: Repository<ComputerComponent>,
     @InjectRepository(RepairRequest)
-    private readonly repairRequestRepository: Repository<RepairRequest>
+    private readonly repairRequestRepository: Repository<RepairRequest>,
+    private readonly dataSource: DataSource
   ) {}
 
   /**
@@ -172,6 +182,80 @@ export class ComputerService {
       success: true,
       message: `Tìm thấy ${computers.length} máy tính trong hệ thống`,
       data: result,
+    };
+  }
+
+  /**
+   * Lấy thông tin chi tiết một component theo ID
+   * Trả về thông tin component và computer chứa component đó
+   *
+   * @param componentId - UUID của component
+   * @returns Thông tin component và computer
+   * @throws NotFoundException nếu không tìm thấy component
+   */
+  async getComponentById(componentId: string) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(componentId)) {
+      throw new NotFoundException(`ID component không hợp lệ: ${componentId}`);
+    }
+
+    // Tìm component
+    const component = await this.componentRepository.findOne({
+      where: { id: componentId },
+    });
+
+    if (!component) {
+      throw new NotFoundException(
+        `Không tìm thấy component với ID: ${componentId}`
+      );
+    }
+
+    // Lấy thông tin computer chứa component này
+    const computer = await this.computerRepository.findOne({
+      where: { id: component.computerAssetId },
+      relations: ["asset", "room"],
+    });
+
+    return {
+      success: true,
+      message: "Lấy thông tin component thành công",
+      data: {
+        component: {
+          id: component.id,
+          componentType: component.componentType,
+          name: component.name,
+          componentSpecs: component.componentSpecs,
+          serialNumber: component.serialNumber,
+          status: component.status,
+          installedAt: component.installedAt?.toISOString(),
+          removedAt: component.removedAt?.toISOString(),
+          notes: component.notes,
+        },
+        computer: computer
+          ? {
+              id: computer.id,
+              machineLabel: computer.machineLabel,
+              asset: computer.asset
+                ? {
+                    id: computer.asset.id,
+                    name: computer.asset.name,
+                    ktCode: computer.asset.ktCode,
+                    fixedCode: computer.asset.fixedCode,
+                    status: computer.asset.status,
+                  }
+                : null,
+              room: computer.room
+                ? {
+                    id: computer.room.id,
+                    name: computer.room.name,
+                    roomCode: computer.room.roomCode,
+                  }
+                : null,
+            }
+          : null,
+      },
     };
   }
 
@@ -357,7 +441,7 @@ export class ComputerService {
    * Lấy danh sách linh kiện khả dụng từ các yêu cầu sửa chữa mà kỹ thuật viên đảm nhận
    * Dùng để kỹ thuật viên chọn linh kiện khi lập đề xuất thay thế
    * Chỉ lấy các yêu cầu sửa chữa được phân công cho kỹ thuật viên hiện tại
-   * 
+   *
    * @param filter - Bộ lọc và phân trang
    * @param currentUser - Kỹ thuật viên hiện tại
    * @returns Danh sách linh kiện khả dụng từ repair requests
@@ -380,17 +464,20 @@ export class ComputerService {
       sortOrder = "DESC",
     } = filter;
 
-    console.log(`🔍 [getAvailableComponents] User: ${currentUser.fullName}, Filter:`, {
-      requestCode,
-      componentType,
-      search,
-      building,
-      floor,
-      roomName,
-      excludeInProposal,
-      page,
-      limit,
-    });
+    console.log(
+      `🔍 [getAvailableComponents] User: ${currentUser.fullName}, Filter:`,
+      {
+        requestCode,
+        componentType,
+        search,
+        building,
+        floor,
+        roomName,
+        excludeInProposal,
+        page,
+        limit,
+      }
+    );
 
     // ✅ THAY ĐỔI: Query trực tiếp từ computer_components thay vì từ repair_requests
     // Lấy TẤT CẢ FAULTY components, không giới hạn theo repair requests
@@ -399,13 +486,9 @@ export class ComputerService {
       .createQueryBuilder("cc")
       .leftJoin("computers", "c", 'c.id = cc."computerAssetId"') // ✅ Join với computers.id
       .leftJoin("assets", "a", 'a.id = c."assetId"') // ✅ Join assets qua computers.assetId
-      .leftJoin("rooms", "r", 'r.id = a.current_room_id') // ✅ Join rooms qua assets.current_room_id
+      .leftJoin("rooms", "r", "r.id = a.current_room_id") // ✅ Join rooms qua assets.current_room_id
       // Left join với repair_requests để lấy thông tin (nếu có)
-      .leftJoin(
-        "repair_request_components",
-        "rrc",
-        'rrc."componentId" = cc.id'
-      )
+      .leftJoin("repair_request_components", "rrc", 'rrc."componentId" = cc.id')
       .leftJoin(
         "repair_requests",
         "rr",
@@ -428,7 +511,7 @@ export class ComputerService {
         'cc."installedAt" as installedAt',
         "a.id as assetId",
         "a.name as assetName",
-        'a.kt_code as ktCode',
+        "a.kt_code as ktCode",
         "r.name as roomName",
         "r.building as buildingName",
         "r.floor as floor",
@@ -462,7 +545,7 @@ export class ComputerService {
     // Search by component name, asset name, or kt code
     if (search) {
       queryBuilder.andWhere(
-        '(cc.name ILIKE :search OR a.name ILIKE :search OR a.kt_code ILIKE :search)',
+        "(cc.name ILIKE :search OR a.name ILIKE :search OR a.kt_code ILIKE :search)",
         { search: `%${search}%` }
       );
     }
@@ -535,18 +618,23 @@ export class ComputerService {
 
     const rawResults = await queryBuilder.getRawMany();
 
-    console.log(`✅ [getAvailableComponents] Found ${rawResults.length} FAULTY components (total before pagination: ${total})`);
-    
+    console.log(
+      `✅ [getAvailableComponents] Found ${rawResults.length} FAULTY components (total before pagination: ${total})`
+    );
+
     // Debug: Log first few components
     if (rawResults.length > 0) {
-      console.log('📦 Sample components:', rawResults.slice(0, 3).map(r => ({
-        id: r.componentid,
-        name: r.componentname,
-        status: r.componentstatus,
-        type: r.componenttype,
-        assetName: r.assetname,
-        requestCode: r.requestcode || 'No repair request',
-      })));
+      console.log(
+        "📦 Sample components:",
+        rawResults.slice(0, 3).map((r) => ({
+          id: r.componentid,
+          name: r.componentname,
+          status: r.componentstatus,
+          type: r.componenttype,
+          assetName: r.assetname,
+          requestCode: r.requestcode || "No repair request",
+        }))
+      );
     }
 
     // Map to DTO
@@ -584,7 +672,7 @@ export class ComputerService {
   /**
    * Lấy danh sách máy tính với filter và pagination
    * Dành cho giao diện quản lý thiết bị của kỹ thuật viên
-   * 
+   *
    * @param filterDto - DTO chứa các tham số filter và pagination
    * @returns Danh sách máy tính với thông tin đầy đủ và pagination
    */
@@ -678,11 +766,13 @@ export class ComputerService {
 
     // Query components cho tất cả computers một lần
     let componentsMap: Map<string, any[]> = new Map();
-    
+
     if (computerIds.length > 0) {
       const components = await this.componentRepository
         .createQueryBuilder("component")
-        .where("component.computerAssetId IN (:...computerIds)", { computerIds })
+        .where("component.computerAssetId IN (:...computerIds)", {
+          computerIds,
+        })
         .orderBy("component.componentType", "ASC")
         .getMany();
 
@@ -777,49 +867,50 @@ export class ComputerService {
   /**
    * Lấy thông tin chi tiết đầy đủ của một máy tính
    * Bao gồm: asset, room, components, software, repair summary
-   * 
+   *
    * @param id - UUID của máy tính hoặc Asset ID
    * @returns Thông tin chi tiết đầy đủ của máy tính
    * @throws NotFoundException nếu không tìm thấy máy tính
    */
   async getComputerDetail(id: string): Promise<GetComputerDetailResponseDto> {
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
       throw new NotFoundException(`ID không hợp lệ: ${id}`);
     }
 
     // Query computer với tất cả relations cần thiết
     let computer = await this.computerRepository
-      .createQueryBuilder('computer')
-      .leftJoinAndSelect('computer.asset', 'asset')
-      .leftJoinAndSelect('asset.category', 'category')
-      .leftJoinAndSelect('computer.room', 'room')
-      .leftJoinAndSelect('room.unit', 'unit')
-      .leftJoinAndSelect('computer.components', 'component')
-      .leftJoinAndSelect('computer.software', 'computerSoftware')
-      .leftJoinAndSelect('computerSoftware.software', 'software')
-      .where('computer.id = :id', { id })
-      .orderBy('component.componentType', 'ASC')
-      .addOrderBy('component.installedAt', 'DESC')
-      .addOrderBy('computerSoftware.installationDate', 'DESC')
+      .createQueryBuilder("computer")
+      .leftJoinAndSelect("computer.asset", "asset")
+      .leftJoinAndSelect("asset.category", "category")
+      .leftJoinAndSelect("computer.room", "room")
+      .leftJoinAndSelect("room.unit", "unit")
+      .leftJoinAndSelect("computer.components", "component")
+      .leftJoinAndSelect("computer.software", "computerSoftware")
+      .leftJoinAndSelect("computerSoftware.software", "software")
+      .where("computer.id = :id", { id })
+      .orderBy("component.componentType", "ASC")
+      .addOrderBy("component.installedAt", "DESC")
+      .addOrderBy("computerSoftware.installationDate", "DESC")
       .getOne();
 
     // Nếu không tìm thấy bằng computer.id, thử tìm bằng assetId
     if (!computer) {
       computer = await this.computerRepository
-        .createQueryBuilder('computer')
-        .leftJoinAndSelect('computer.asset', 'asset')
-        .leftJoinAndSelect('asset.category', 'category')
-        .leftJoinAndSelect('computer.room', 'room')
-        .leftJoinAndSelect('room.unit', 'unit')
-        .leftJoinAndSelect('computer.components', 'component')
-        .leftJoinAndSelect('computer.software', 'computerSoftware')
-        .leftJoinAndSelect('computerSoftware.software', 'software')
-        .where('computer.assetId = :id', { id })
-        .orderBy('component.componentType', 'ASC')
-        .addOrderBy('component.installedAt', 'DESC')
-        .addOrderBy('computerSoftware.installationDate', 'DESC')
+        .createQueryBuilder("computer")
+        .leftJoinAndSelect("computer.asset", "asset")
+        .leftJoinAndSelect("asset.category", "category")
+        .leftJoinAndSelect("computer.room", "room")
+        .leftJoinAndSelect("room.unit", "unit")
+        .leftJoinAndSelect("computer.components", "component")
+        .leftJoinAndSelect("computer.software", "computerSoftware")
+        .leftJoinAndSelect("computerSoftware.software", "software")
+        .where("computer.assetId = :id", { id })
+        .orderBy("component.componentType", "ASC")
+        .addOrderBy("component.installedAt", "DESC")
+        .addOrderBy("computerSoftware.installationDate", "DESC")
         .getOne();
     }
 
@@ -830,64 +921,71 @@ export class ComputerService {
 
     // Lấy thống kê repair requests của asset này
     const repairRequests = await this.repairRequestRepository
-      .createQueryBuilder('repair')
-      .where('repair.computerAssetId = :assetId', { assetId: computer.asset.id })
-      .select([
-        'repair.id',
-        'repair.status',
-        'repair.createdAt',
-      ])
+      .createQueryBuilder("repair")
+      .where("repair.computerAssetId = :assetId", {
+        assetId: computer.asset.id,
+      })
+      .select(["repair.id", "repair.status", "repair.createdAt"])
       .getMany();
 
     // Tính toán repair summary
     const repairSummary = {
       total: repairRequests.length,
-      inProgress: repairRequests.filter(r => 
-        [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ].includes(r.status as RepairStatus)
+      inProgress: repairRequests.filter((r) =>
+        [RepairStatus.ĐÃ_TIẾP_NHẬN, RepairStatus.ĐANG_XỬ_LÝ].includes(
+          r.status as RepairStatus
+        )
       ).length,
-      completed: repairRequests.filter(r => 
-        r.status === RepairStatus.ĐÃ_HOÀN_THÀNH
+      completed: repairRequests.filter(
+        (r) => r.status === RepairStatus.ĐÃ_HOÀN_THÀNH
       ).length,
-      lastRequestDate: repairRequests.length > 0 
-        ? repairRequests.sort((a, b) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          )[0].createdAt.toISOString()
-        : undefined,
+      lastRequestDate:
+        repairRequests.length > 0
+          ? repairRequests
+              .sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime()
+              )[0]
+              .createdAt.toISOString()
+          : undefined,
     };
 
     // Transform components data
-    const components = computer.components?.map(comp => ({
-      id: comp.id,
-      componentType: comp.componentType,
-      name: comp.name,
-      componentSpecs: comp.componentSpecs,
-      serialNumber: comp.serialNumber,
-      status: comp.status,
-      installedAt: comp.installedAt?.toISOString(),
-      removedAt: comp.removedAt?.toISOString(),
-      notes: comp.notes,
-    })) || [];
+    const components =
+      computer.components?.map((comp) => ({
+        id: comp.id,
+        componentType: comp.componentType,
+        name: comp.name,
+        componentSpecs: comp.componentSpecs,
+        serialNumber: comp.serialNumber,
+        status: comp.status,
+        installedAt: comp.installedAt?.toISOString(),
+        removedAt: comp.removedAt?.toISOString(),
+        notes: comp.notes,
+      })) || [];
 
     // Transform software data
-    const software = computer.software?.map(cs => ({
-      id: cs.software.id,
-      computerSoftwareId: cs.id,
-      name: cs.software.name,
-      version: cs.software.version,
-      publisher: cs.software.publisher,
-      licenseKey: cs.licenseKey,
-      installationDate: cs.installationDate ? 
-        (typeof cs.installationDate === 'string' 
-          ? cs.installationDate 
-          : new Date(cs.installationDate).toISOString().split('T')[0]
-        ) : undefined,
-      notes: cs.notes,
-    })) || [];
+    const software =
+      computer.software?.map((cs) => ({
+        id: cs.software.id,
+        computerSoftwareId: cs.id,
+        name: cs.software.name,
+        version: cs.software.version,
+        publisher: cs.software.publisher,
+        licenseKey: cs.licenseKey,
+        installationDate: cs.installationDate
+          ? typeof cs.installationDate === "string"
+            ? cs.installationDate
+            : new Date(cs.installationDate).toISOString().split("T")[0]
+          : undefined,
+        notes: cs.notes,
+      })) || [];
 
     // Build response
     return {
       success: true,
-      message: 'Lấy thông tin chi tiết máy tính thành công',
+      message: "Lấy thông tin chi tiết máy tính thành công",
       data: {
         id: computer.id,
         machineLabel: computer.machineLabel,
@@ -899,11 +997,11 @@ export class ComputerService {
           name: computer.asset.name,
           specs: computer.asset.specs,
           status: computer.asset.status,
-          entrydate: computer.asset.entrydate ? 
-            (typeof computer.asset.entrydate === 'string' 
-              ? computer.asset.entrydate 
-              : new Date(computer.asset.entrydate).toISOString().split('T')[0]
-            ) : '',
+          entrydate: computer.asset.entrydate
+            ? typeof computer.asset.entrydate === "string"
+              ? computer.asset.entrydate
+              : new Date(computer.asset.entrydate).toISOString().split("T")[0]
+            : "",
           origin: computer.asset.origin,
           categoryId: computer.asset.categoryId,
           categoryName: computer.asset.category?.name,
@@ -912,21 +1010,419 @@ export class ComputerService {
           type: computer.asset.type,
           shape: computer.asset.shape,
         },
-        room: computer.room ? {
-          id: computer.room.id,
-          name: computer.room.name,
-          roomNumber: computer.room.roomNumber,
-          roomCode: computer.room.roomCode,
-          building: computer.room.building,
-          floor: computer.room.floor,
-          unitId: computer.room.unitId,
-          unitName: computer.room.unit?.name,
-        } : undefined,
+        room: computer.room
+          ? {
+              id: computer.room.id,
+              name: computer.room.name,
+              roomNumber: computer.room.roomNumber,
+              roomCode: computer.room.roomCode,
+              building: computer.room.building,
+              floor: computer.room.floor,
+              unitId: computer.room.unitId,
+              unitName: computer.room.unit?.name,
+            }
+          : undefined,
         components,
         componentCount: components.length,
         software,
         softwareCount: software.length,
         repairSummary,
+      },
+    };
+  }
+
+  /**
+   * Thay thế một linh kiện trong máy tính
+   * - Cập nhật status linh kiện cũ thành REMOVED và set removedAt
+   * - Thêm linh kiện mới với status INSTALLED
+   *
+   * @param computerId - UUID của máy tính
+   * @param replaceDto - Thông tin thay thế linh kiện
+   * @returns Thông tin linh kiện mới đã được thêm vào
+   * @throws NotFoundException nếu không tìm thấy máy tính hoặc linh kiện cũ
+   * @throws BadRequestException nếu linh kiện cũ không thuộc máy tính này
+   */
+  async replaceComponent(computerId: string, replaceDto: ReplaceComponentDto) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    // Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Kiểm tra máy tính có tồn tại không
+      const computer = await manager.findOne(Computer, {
+        where: { id: computerId },
+        relations: ["asset", "room"],
+      });
+
+      if (!computer) {
+        throw new NotFoundException(
+          `Không tìm thấy máy tính với ID: ${computerId}`
+        );
+      }
+
+      // 2. Kiểm tra linh kiện cũ có tồn tại không
+      const oldComponent = await manager.findOne(ComputerComponent, {
+        where: { id: replaceDto.oldComponentId },
+      });
+
+      if (!oldComponent) {
+        throw new NotFoundException(
+          `Không tìm thấy linh kiện với ID: ${replaceDto.oldComponentId}`
+        );
+      }
+
+      // 3. Kiểm tra linh kiện cũ có thuộc máy tính này không
+      if (oldComponent.computerAssetId !== computerId) {
+        throw new BadRequestException(
+          `Linh kiện ${oldComponent.name} không thuộc máy tính ${computer.machineLabel}`
+        );
+      }
+
+      // 4. Cập nhật status linh kiện cũ thành REMOVED
+      oldComponent.status = ComponentStatus.REMOVED;
+      oldComponent.removedAt = new Date();
+      await manager.save(ComputerComponent, oldComponent);
+
+      // 5. Tạo linh kiện mới với status INSTALLED
+      const newComponent = manager.create(ComputerComponent, {
+        computerAssetId: computerId,
+        componentType: oldComponent.componentType, // Giữ nguyên loại linh kiện
+        name: replaceDto.newItemName,
+        componentSpecs: replaceDto.newItemSpecs,
+        serialNumber: replaceDto.serialNumber || null,
+        status: ComponentStatus.INSTALLED,
+        installedAt: new Date(),
+        notes:
+          replaceDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+      });
+
+      const savedComponent = await manager.save(
+        ComputerComponent,
+        newComponent
+      );
+
+      // 6. Trả về thông tin chi tiết
+      return {
+        success: true,
+        message: `Thay thế linh kiện ${oldComponent.componentType} thành công`,
+        data: {
+          computer: {
+            id: computer.id,
+            machineLabel: computer.machineLabel,
+            assetName: computer.asset?.name,
+          },
+          oldComponent: {
+            id: oldComponent.id,
+            name: oldComponent.name,
+            componentType: oldComponent.componentType,
+            componentSpecs: oldComponent.componentSpecs,
+            status: oldComponent.status,
+            removedAt: oldComponent.removedAt,
+          },
+          newComponent: {
+            id: savedComponent.id,
+            name: savedComponent.name,
+            componentType: savedComponent.componentType,
+            componentSpecs: savedComponent.componentSpecs,
+            serialNumber: savedComponent.serialNumber,
+            status: savedComponent.status,
+            installedAt: savedComponent.installedAt,
+            notes: savedComponent.notes,
+          },
+        },
+      };
+    });
+  }
+
+  /**
+   * Thay thế nhiều linh kiện trong máy tính cùng lúc
+   * Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện
+   *
+   * @param computerId - UUID của máy tính
+   * @param replaceMultipleDto - Danh sách các linh kiện cần thay thế
+   * @returns Thông tin tất cả các linh kiện đã được thay thế
+   */
+  async replaceMultipleComponents(
+    computerId: string,
+    replaceMultipleDto: ReplaceMultipleComponentsDto
+  ) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    if (
+      !replaceMultipleDto.components ||
+      replaceMultipleDto.components.length === 0
+    ) {
+      throw new BadRequestException("Danh sách linh kiện không được để trống");
+    }
+
+    // Sử dụng transaction để đảm bảo tính nhất quán
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. Kiểm tra máy tính có tồn tại không
+      const computer = await manager.findOne(Computer, {
+        where: { id: computerId },
+        relations: ["asset", "room"],
+      });
+
+      if (!computer) {
+        throw new NotFoundException(
+          `Không tìm thấy máy tính với ID: ${computerId}`
+        );
+      }
+
+      const results = [];
+
+      // 2. Xử lý từng linh kiện
+      for (const componentDto of replaceMultipleDto.components) {
+        // Kiểm tra linh kiện cũ
+        const oldComponent = await manager.findOne(ComputerComponent, {
+          where: { id: componentDto.oldComponentId },
+        });
+
+        if (!oldComponent) {
+          throw new NotFoundException(
+            `Không tìm thấy linh kiện với ID: ${componentDto.oldComponentId}`
+          );
+        }
+
+        // Kiểm tra linh kiện thuộc máy tính này
+        if (oldComponent.computerAssetId !== computerId) {
+          throw new BadRequestException(
+            `Linh kiện ${oldComponent.name} không thuộc máy tính ${computer.machineLabel}`
+          );
+        }
+
+        // Cập nhật linh kiện cũ
+        oldComponent.status = ComponentStatus.REMOVED;
+        oldComponent.removedAt = new Date();
+        await manager.save(ComputerComponent, oldComponent);
+
+        // Tạo linh kiện mới
+        const newComponent = manager.create(ComputerComponent, {
+          computerAssetId: computerId,
+          componentType: oldComponent.componentType,
+          name: componentDto.newItemName,
+          componentSpecs: componentDto.newItemSpecs,
+          serialNumber: componentDto.serialNumber || null,
+          status: ComponentStatus.INSTALLED,
+          installedAt: new Date(),
+          notes:
+            componentDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+        });
+
+        const savedComponent = await manager.save(
+          ComputerComponent,
+          newComponent
+        );
+
+        results.push({
+          oldComponent: {
+            id: oldComponent.id,
+            name: oldComponent.name,
+            componentType: oldComponent.componentType,
+            status: oldComponent.status,
+            removedAt: oldComponent.removedAt,
+          },
+          newComponent: {
+            id: savedComponent.id,
+            name: savedComponent.name,
+            componentType: savedComponent.componentType,
+            componentSpecs: savedComponent.componentSpecs,
+            status: savedComponent.status,
+            installedAt: savedComponent.installedAt,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        message: `Thay thế ${results.length} linh kiện thành công`,
+        data: {
+          computer: {
+            id: computer.id,
+            machineLabel: computer.machineLabel,
+            assetName: computer.asset?.name,
+            roomName: computer.room?.name,
+          },
+          replacedComponents: results,
+          totalReplaced: results.length,
+        },
+      };
+    });
+  }
+
+  /**
+   * Generate QR code cho computer
+   * QR code chứa computerId để người dùng quét và tự động điền thông tin
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Base64 string của QR code image
+   * @throws NotFoundException nếu không tìm thấy máy tính
+   */
+  async generateQRCode(computerId: string): Promise<string> {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    // Kiểm tra máy tính có tồn tại không
+    const computer = await this.computerRepository.findOne({
+      where: { id: computerId },
+      relations: ["asset", "room"],
+    });
+
+    if (!computer) {
+      throw new NotFoundException(
+        `Không tìm thấy máy tính với ID: ${computerId}`
+      );
+    }
+
+    try {
+      // Tạo data object để encode vào QR
+      const qrData = {
+        type: "REPAIR_REQUEST",
+        computerId: computer.id,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Generate QR code dưới dạng base64 string
+      const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
+        errorCorrectionLevel: "H",
+        type: "image/png",
+        width: 300,
+        margin: 1,
+      });
+
+      return qrCodeDataURL;
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+      throw new BadRequestException("Không thể tạo QR code");
+    }
+  }
+
+  /**
+   * Lấy thông tin máy tính để tạo repair request từ QR code
+   * Trả về tất cả thông tin cần thiết để auto-fill form
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Thông tin máy tính và components để tạo repair request
+   * @throws NotFoundException nếu không tìm thấy máy tính
+   */
+  async getComputerRepairInfo(computerId: string) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(computerId)) {
+      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    }
+
+    // Lấy thông tin máy tính đầy đủ
+    const computer = await this.computerRepository.findOne({
+      where: { id: computerId },
+      relations: [
+        "asset",
+        "asset.category",
+        "room",
+        "room.unit",
+        "components",
+        "software",
+        "software.software",
+      ],
+    });
+
+    if (!computer) {
+      throw new NotFoundException(
+        `Không tìm thấy máy tính với ID: ${computerId}`
+      );
+    }
+
+    // Kiểm tra máy tính có đang được sửa chữa không
+    const activeRepairRequest = await this.repairRequestRepository.findOne({
+      where: {
+        computerAssetId: computer.assetId,
+        status: In([
+          RepairStatus.CHỜ_TIẾP_NHẬN,
+          RepairStatus.ĐÃ_TIẾP_NHẬN,
+          RepairStatus.ĐANG_XỬ_LÝ,
+          RepairStatus.CHỜ_THAY_THẾ,
+        ]),
+      },
+      order: { createdAt: "DESC" },
+    });
+
+    // Lấy danh sách components có thể báo lỗi (status = INSTALLED)
+    const availableComponents =
+      computer.components
+        ?.filter((c) => c.status === ComponentStatus.INSTALLED)
+        .map((c) => ({
+          id: c.id,
+          componentType: c.componentType,
+          name: c.name,
+          componentSpecs: c.componentSpecs,
+          serialNumber: c.serialNumber,
+        })) || [];
+
+    // Lấy danh sách software đã cài đặt
+    const installedSoftware =
+      computer.software?.map((cs) => ({
+        id: cs.software.id,
+        name: cs.software.name,
+        version: cs.software.version,
+        publisher: cs.software.publisher,
+        installationDate: cs.installationDate,
+      })) || [];
+
+    return {
+      success: true,
+      message: "Lấy thông tin máy tính thành công",
+      data: {
+        computer: {
+          id: computer.id,
+          machineLabel: computer.machineLabel,
+          notes: computer.notes,
+        },
+        asset: {
+          id: computer.asset.id,
+          ktCode: computer.asset.ktCode,
+          fixedCode: computer.asset.fixedCode,
+          name: computer.asset.name,
+          specs: computer.asset.specs,
+          status: computer.asset.status,
+          categoryName: computer.asset.category?.name,
+        },
+        room: computer.room
+          ? {
+              id: computer.room.id,
+              name: computer.room.name,
+              roomNumber: computer.room.roomNumber,
+              roomCode: computer.room.roomCode,
+              building: computer.room.building,
+              floor: computer.room.floor,
+              unitName: computer.room.unit?.name,
+            }
+          : null,
+        availableComponents,
+        installedSoftware,
+        hasActiveRepair: !!activeRepairRequest,
+        activeRepairInfo: activeRepairRequest
+          ? {
+              id: activeRepairRequest.id,
+              requestCode: activeRepairRequest.requestCode,
+              status: activeRepairRequest.status,
+              description: activeRepairRequest.description,
+              createdAt: activeRepairRequest.createdAt,
+            }
+          : null,
       },
     };
   }
