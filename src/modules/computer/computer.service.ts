@@ -187,14 +187,15 @@ export class ComputerService {
   /**
    * Lấy thông tin chi tiết một component theo ID
    * Trả về thông tin component và computer chứa component đó
-   * 
+   *
    * @param componentId - UUID của component
    * @returns Thông tin component và computer
    * @throws NotFoundException nếu không tìm thấy component
    */
   async getComponentById(componentId: string) {
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(componentId)) {
       throw new NotFoundException(`ID component không hợp lệ: ${componentId}`);
     }
@@ -205,18 +206,20 @@ export class ComputerService {
     });
 
     if (!component) {
-      throw new NotFoundException(`Không tìm thấy component với ID: ${componentId}`);
+      throw new NotFoundException(
+        `Không tìm thấy component với ID: ${componentId}`
+      );
     }
 
     // Lấy thông tin computer chứa component này
     const computer = await this.computerRepository.findOne({
       where: { id: component.computerAssetId },
-      relations: ['asset', 'room'],
+      relations: ["asset", "room"],
     });
 
     return {
       success: true,
-      message: 'Lấy thông tin component thành công',
+      message: "Lấy thông tin component thành công",
       data: {
         component: {
           id: component.id,
@@ -229,22 +232,28 @@ export class ComputerService {
           removedAt: component.removedAt?.toISOString(),
           notes: component.notes,
         },
-        computer: computer ? {
-          id: computer.id,
-          machineLabel: computer.machineLabel,
-          asset: computer.asset ? {
-            id: computer.asset.id,
-            name: computer.asset.name,
-            ktCode: computer.asset.ktCode,
-            fixedCode: computer.asset.fixedCode,
-            status: computer.asset.status,
-          } : null,
-          room: computer.room ? {
-            id: computer.room.id,
-            name: computer.room.name,
-            roomCode: computer.room.roomCode,
-          } : null,
-        } : null,
+        computer: computer
+          ? {
+              id: computer.id,
+              machineLabel: computer.machineLabel,
+              asset: computer.asset
+                ? {
+                    id: computer.asset.id,
+                    name: computer.asset.name,
+                    ktCode: computer.asset.ktCode,
+                    fixedCode: computer.asset.fixedCode,
+                    status: computer.asset.status,
+                  }
+                : null,
+              room: computer.room
+                ? {
+                    id: computer.room.id,
+                    name: computer.room.name,
+                    roomCode: computer.room.roomCode,
+                  }
+                : null,
+            }
+          : null,
       },
     };
   }
