@@ -258,7 +258,7 @@ export class RepairsController {
     summary: "Lấy danh sách yêu cầu sửa chữa",
     description: `
       Lấy danh sách tất cả yêu cầu sửa chữa với khả năng lọc và phân trang.
-      
+      với computerAssetId và id bên trong computerAsset là mã của Asset chứ không phải computerId
       **Tính năng lọc:**
       - Theo tài sản (computerAssetId)
       - Theo người báo lỗi (reporterId)
