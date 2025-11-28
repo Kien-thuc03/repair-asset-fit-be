@@ -32,6 +32,7 @@ import {
   ReplaceComponentDto,
   ReplaceMultipleComponentsDto,
 } from "./dto/replace-component.dto";
+import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -525,6 +526,80 @@ export class ComputerController {
     return this.computerService.replaceComponent(computerId, replaceDto);
   }
 
+  /**
+   * PATCH /computer/add-stock-component
+   * Thêm linh kiện mới về kho từ đề xuất thay thế (Bulk Action)
+   * Xử lý tất cả các items trong đề xuất cùng lúc
+   *
+   * @param addStockDto - Thông tin đề xuất
+   * @returns Kết quả xử lý
+   */
+  @Patch("add-stock-component")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Thêm linh kiện mới về kho từ đề xuất (Bulk Action)",
+    description: `
+      API thêm linh kiện mới về kho hàng loạt dựa trên đề xuất thay thế.
+      
+      **✨ Tính năng:**
+      - ✅ Xử lý TẤT CẢ items trong đề xuất cùng lúc
+      - ✅ Tự động tạo linh kiện mới với status IN_STOCK
+      - ✅ Tự động cập nhật newlyPurchasedComponentId cho từng item
+      - ✅ Bỏ qua các items đã được xử lý trước đó
+      
+      **Quy trình:**
+      1. Truyền proposalId của đề xuất đã được duyệt và mua hàng
+      2. Hệ thống duyệt qua từng item trong đề xuất
+      3. Tạo linh kiện mới tương ứng cho mỗi item
+      4. Trả về kết quả tổng hợp
+      
+      **Dữ liệu cần truyền:**
+      - proposalId: UUID của đề xuất (bắt buộc)
+      - notes: Ghi chú chung (tùy chọn)
+      
+      **Sử dụng khi:**
+      - Hàng về kho theo đề xuất, muốn nhập kho nhanh tất cả
+      - Thay thế cho việc nhập từng linh kiện một
+    `,
+  })
+  @ApiBody({ type: AddStockFromProposalDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xử lý nhập kho thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Đã xử lý nhập kho cho đề xuất. Thành công: 3/3",
+        data: {
+          proposalId: "ef6c626b-b3c1-4545-9a50-3c879aa79664",
+          totalItems: 3,
+          successCount: 3,
+          details: [
+            {
+              itemId: "fdad6ae9-cedd-49a8-92eb-7a4b887e3198",
+              status: "SUCCESS",
+              newComponent: {
+                id: "new-uuid-1",
+                name: "Intel Core i5 10TH GEN",
+                type: "CPU",
+              },
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy đề xuất hoặc items",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  addStockComponent(@Body() addStockDto: AddStockFromProposalDto) {
+    return this.computerService.addStockFromProposal(addStockDto);
+  }
 
   /**
    * GET /computer/:computerId/qr-code
