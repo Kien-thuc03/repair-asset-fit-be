@@ -191,6 +191,7 @@ export class ReplacementProposalsService {
       .leftJoinAndSelect("items.oldComponent", "oldComponent")
       .leftJoinAndSelect("oldComponent.computer", "computer")
       .leftJoinAndSelect("computer.room", "room")
+      .leftJoinAndSelect("computer.asset", "computerAsset")
       .leftJoinAndSelect(
         "items.newlyPurchasedComponent",
         "newlyPurchasedComponent"
@@ -294,6 +295,7 @@ export class ReplacementProposalsService {
         "items.oldComponent",
         "items.oldComponent.computer",
         "items.oldComponent.computer.room",
+        "items.oldComponent.computer.asset",
         "items.newlyPurchasedComponent",
         "repairRequests",
       ],
@@ -585,6 +587,7 @@ export class ReplacementProposalsService {
         const roomLocation = room
           ? `${room.building || ""} - ${room.roomNumber || ""}`.trim()
           : undefined;
+        const computerName = item.oldComponent?.computer?.asset?.name;
 
         return {
           id: item.id,
@@ -598,6 +601,7 @@ export class ReplacementProposalsService {
                 componentSpecs: item.oldComponent.componentSpecs,
                 status: item.oldComponent.status,
                 roomLocation,
+                computerName,
               }
             : undefined,
           newItemName: item.newItemName,
