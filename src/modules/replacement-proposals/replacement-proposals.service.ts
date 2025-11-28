@@ -76,13 +76,16 @@ export class ReplacementProposalsService {
       // ⚠️ QUAN TRỌNG: Cập nhật trạng thái linh kiện cũ sang PENDING_REPLACEMENT
       // Các linh kiện được đưa vào đề xuất thay thế cần được đánh dấu là đang chờ thay thế
       const oldComponentIds = createDto.items
-        .map(item => item.oldComponentId)
-        .filter(id => id !== undefined && id !== null);
+        .map((item) => item.oldComponentId)
+        .filter((id) => id !== undefined && id !== null);
 
       if (oldComponentIds.length > 0) {
-        const oldComponents = await queryRunner.manager.find(ComputerComponent, {
-          where: { id: In(oldComponentIds as string[]) },
-        });
+        const oldComponents = await queryRunner.manager.find(
+          ComputerComponent,
+          {
+            where: { id: In(oldComponentIds as string[]) },
+          }
+        );
 
         for (const component of oldComponents) {
           // Chỉ cập nhật nếu component đang ở trạng thái FAULTY
@@ -90,7 +93,9 @@ export class ReplacementProposalsService {
           if (component.status === ComponentStatus.FAULTY) {
             component.status = ComponentStatus.PENDING_REPLACEMENT;
             await queryRunner.manager.save(component);
-            console.log(`✅ Component ${component.id} (${component.name}) status: FAULTY → PENDING_REPLACEMENT`);
+            console.log(
+              `✅ Component ${component.id} (${component.name}) status: FAULTY → PENDING_REPLACEMENT`
+            );
           }
         }
       }
@@ -464,7 +469,6 @@ export class ReplacementProposalsService {
     return proposals.map((proposal) => this.mapToResponseDto(proposal));
   }
 
-
   /**
    * Validate status transition
    */
@@ -490,6 +494,7 @@ export class ReplacementProposalsService {
       ],
       [ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH]: [
         ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH,
+        ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH,
       ],
       [ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH]: [ReplacementStatus.CHỜ_XÁC_MINH],
       [ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH]: [
@@ -631,10 +636,7 @@ export class ReplacementProposalsService {
    * @throws ForbiddenException nếu người dùng không có quyền xóa
    * @throws BadRequestException nếu đề xuất đang ở trạng thái không cho phép xóa
    */
-  async remove(
-    id: string,
-    currentUser: User
-  ): Promise<{ message: string }> {
+  async remove(id: string, currentUser: User): Promise<{ message: string }> {
     // 1. Kiểm tra đề xuất có tồn tại không
     const proposal = await this.replacementProposalRepository.findOne({
       where: { id },
