@@ -8,6 +8,18 @@ export class ReplacementItemResponseDto {
   @ApiProperty({ description: "ID đề xuất" })
   proposalId: string;
 
+  @ApiPropertyOptional({
+    description: "ID yêu cầu sửa chữa liên quan đến linh kiện này",
+    type: "string",
+  })
+  repairRequestId?: string;
+
+  @ApiPropertyOptional({
+    description: "Mã YCSC (requestCode) của yêu cầu sửa chữa liên quan",
+    type: "string",
+  })
+  requestCode?: string;
+
   @ApiPropertyOptional({ description: "ID linh kiện cũ" })
   oldComponentId?: string;
 
