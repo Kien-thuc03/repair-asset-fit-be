@@ -491,19 +491,13 @@ export class ComputerService {
       .leftJoin("assets", "a", 'a.id = c."assetId"') // ✅ Join assets qua computers.assetId
       .leftJoin("rooms", "r", "r.id = a.current_room_id") // ✅ Join rooms qua assets.current_room_id
       // Left join với repair_requests để lấy thông tin (nếu có)
+      // ✅ SỬA: Bỏ điều kiện status trong JOIN để lấy TẤT CẢ repair requests (kể cả đã hoàn thành/hủy)
+      // Điều này đảm bảo requestCode được hiển thị đúng cho tất cả các linh kiện có repair request
       .leftJoin("repair_request_components", "rrc", 'rrc."componentId" = cc.id')
       .leftJoin(
         "repair_requests",
         "rr",
-        'rr.id = rrc."repairRequestId" AND rr.status IN (:...activeStatuses)',
-        {
-          activeStatuses: [
-            RepairStatus.CHỜ_TIẾP_NHẬN,
-            RepairStatus.ĐÃ_TIẾP_NHẬN,
-            RepairStatus.ĐANG_XỬ_LÝ,
-            RepairStatus.CHỜ_THAY_THẾ,
-          ],
-        }
+        'rr.id = rrc."repairRequestId"'
       )
       .select([
         "cc.id as componentId",
@@ -580,6 +574,24 @@ export class ComputerService {
         return `cc.id NOT IN ${subQuery}`;
       });
     }
+
+    // ✅ Loại trừ các components có repair request đã hoàn thành hoặc đã hủy
+    // Chỉ lấy components không có repair request, hoặc có repair request nhưng chưa hoàn thành/hủy
+    queryBuilder.andWhere((qb) => {
+      const subQuery = qb
+        .subQuery()
+        .select('rrc2."componentId"')
+        .from("repair_request_components", "rrc2")
+        .innerJoin("repair_requests", "rr2", 'rr2.id = rrc2."repairRequestId"')
+        .where('rr2.status IN (:...completedOrCancelledStatuses)', {
+          completedOrCancelledStatuses: [
+            RepairStatus.ĐÃ_HOÀN_THÀNH,
+            RepairStatus.ĐÃ_HỦY,
+          ],
+        })
+        .getQuery();
+      return `cc.id NOT IN ${subQuery}`;
+    });
 
     // Get total count before pagination
     const totalQuery = await queryBuilder.getRawMany();

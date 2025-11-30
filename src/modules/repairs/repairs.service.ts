@@ -1090,6 +1090,44 @@ export class RepairsService {
     repairRequest.resolutionNotes = resolutionNotes;
     repairRequest.completedAt = new Date();
 
+    // ✅ Cập nhật trạng thái linh kiện về INSTALLED khi repair request hoàn thành
+    // ⚠️ LƯU Ý: Chỉ cập nhật nếu repair request KHÔNG phải CHỜ_THAY_THẾ
+    // Vì nếu là CHỜ_THAY_THẾ, component có thể đã được thêm vào proposal (PENDING_REPLACEMENT)
+    // hoặc đã được thay thế (REMOVED), không nên cập nhật
+    // Chỉ cập nhật khi repair request từ ĐANG_XỬ_LÝ → ĐÃ_HOÀN_THÀNH (đã sửa xong)
+    if (oldStatus === RepairStatus.ĐANG_XỬ_LÝ) {
+      const repairRequestWithComponents = await this.repairRequestRepository.findOne({
+        where: { id },
+        relations: ["components"],
+      });
+
+      if (repairRequestWithComponents?.components) {
+        for (const component of repairRequestWithComponents.components) {
+          // Chỉ cập nhật nếu component vẫn còn FAULTY (chưa được thay thế)
+          // Nếu component đã là PENDING_REPLACEMENT (đang trong proposal) hoặc REMOVED (đã thay thế),
+          // thì không cập nhật vì đã được xử lý bởi luồng thay thế
+          if (component.status === ComponentStatus.FAULTY) {
+            component.status = ComponentStatus.INSTALLED;
+            await this.computerComponentRepository.save(component);
+            console.log(
+              `✅ [completeRequest] Component ${component.id} (${component.name}): FAULTY → INSTALLED (do repair request hoàn thành - đã sửa xong)`
+            );
+          } else {
+            console.log(
+              `ℹ️ [completeRequest] Component ${component.id} (${component.name}): Status = ${component.status}, skip update (đã được xử lý bởi luồng thay thế)`
+            );
+          }
+        }
+      }
+    } else if (oldStatus === RepairStatus.CHỜ_THAY_THẾ) {
+      // Nếu repair request từ CHỜ_THAY_THẾ → ĐÃ_HOÀN_THÀNH
+      // Component đã được thay thế (REMOVED) hoặc đang trong proposal (PENDING_REPLACEMENT)
+      // Không cần cập nhật vì đã được xử lý bởi luồng thay thế
+      console.log(
+        `ℹ️ [completeRequest] Repair request từ CHỜ_THAY_THẾ → ĐÃ_HOÀN_THÀNH, component đã được xử lý bởi luồng thay thế`
+      );
+    }
+
     // Cập nhật trạng thái tài sản về bình thường
     if (repairRequest.computerAsset) {
       repairRequest.computerAsset.status = AssetStatus.IN_USE;
@@ -1151,6 +1189,32 @@ export class RepairsService {
     const oldStatus = repairRequest.status;
     repairRequest.status = RepairStatus.ĐÃ_HỦY;
     repairRequest.resolutionNotes = `ĐÃ HỦY: ${cancelReason}`;
+
+    // ✅ Khôi phục trạng thái linh kiện về INSTALLED nếu đã được chuyển sang FAULTY
+    // Lấy tất cả components liên quan đến repair request này
+    const repairRequestWithComponents = await this.repairRequestRepository.findOne({
+      where: { id },
+      relations: ["components"],
+    });
+
+    if (repairRequestWithComponents?.components) {
+      for (const component of repairRequestWithComponents.components) {
+        // Chỉ rollback nếu component đang ở trạng thái FAULTY
+        // (tức là đã được chuyển từ INSTALLED → FAULTY khi tạo repair request)
+        // Không rollback nếu component đã REMOVED hoặc PENDING_REPLACEMENT
+        if (component.status === ComponentStatus.FAULTY) {
+          component.status = ComponentStatus.INSTALLED;
+          await this.computerComponentRepository.save(component);
+          console.log(
+            `✅ [cancelRequest] Component ${component.id} (${component.name}): FAULTY → INSTALLED (do hủy repair request)`
+          );
+        } else {
+          console.log(
+            `ℹ️ [cancelRequest] Component ${component.id} (${component.name}): Status = ${component.status}, skip rollback`
+          );
+        }
+      }
+    }
 
     // Khôi phục trạng thái tài sản nếu cần
     if (
