@@ -772,4 +772,83 @@ export class ComputerController {
   getComputerRepairInfo(@Param("computerId") computerId: string) {
     return this.computerService.getComputerRepairInfo(computerId);
   }
+
+  /**
+   * DELETE /computer/component/:componentId
+   * Xóa một linh kiện khỏi hệ thống
+   * Kiểm tra ràng buộc trước khi xóa (repair requests, replacement items)
+   *
+   * @param componentId - UUID của linh kiện cần xóa
+   * @returns Thông tin linh kiện đã xóa
+   */
+  @Delete("component/:componentId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Xóa một linh kiện khỏi hệ thống",
+    description: `
+      API xóa một linh kiện khỏi hệ thống sau khi kiểm tra các ràng buộc.
+      
+      **Quy trình:**
+      1. Kiểm tra linh kiện có tồn tại không
+      2. Kiểm tra linh kiện có đang được sử dụng trong repair requests không
+      3. Kiểm tra linh kiện có đang được sử dụng trong replacement items không
+      4. Nếu không có ràng buộc, xóa linh kiện
+      5. Trả về thông tin linh kiện đã xóa
+      
+      **Ràng buộc:**
+      - Không thể xóa linh kiện đang được sử dụng trong yêu cầu sửa chữa
+      - Không thể xóa linh kiện đang được sử dụng trong đề xuất thay thế
+      - Phải xóa hoặc cập nhật các bản ghi liên quan trước khi xóa linh kiện
+      
+      **Sử dụng khi:**
+      - Xóa linh kiện đã bị hỏng và không còn sử dụng
+      - Xóa linh kiện nhập sai thông tin
+      - Dọn dẹp dữ liệu không cần thiết
+      
+      **Lưu ý:**
+      - Đây là thao tác xóa vĩnh viễn (hard delete)
+      - Không thể khôi phục sau khi xóa
+      - Cần quyền phù hợp để thực hiện
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xóa linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Xóa linh kiện RAM thành công",
+        data: {
+          deletedComponent: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            name: "RAM",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            serialNumber: "SN123456789",
+            status: "REMOVED",
+            computer: {
+              id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+              machineLabel: "01",
+              assetName: "PC ASUS VivoBook",
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy linh kiện",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Linh kiện đang được sử dụng, không thể xóa",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  deleteComponent(@Param("componentId") componentId: string) {
+    return this.computerService.deleteComponent(componentId);
+  }
 }

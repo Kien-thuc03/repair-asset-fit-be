@@ -295,7 +295,7 @@ export class ReplacementProposalsService {
         "items.oldComponent",
         "items.oldComponent.computer",
         "items.oldComponent.computer.room",
-        "items.oldComponent.computer.asset",
+        "items.oldComponent.repairRequests",
         "items.newlyPurchasedComponent",
         "repairRequests",
       ],
@@ -589,9 +589,22 @@ export class ReplacementProposalsService {
           : undefined;
         const computerName = item.oldComponent?.computer?.asset?.name;
 
+        // Lấy repair request đầu tiên liên quan đến linh kiện cũ
+        let repairRequestId: string | undefined;
+        let requestCode: string | undefined;
+
+        if (item.oldComponent?.repairRequests && item.oldComponent.repairRequests.length > 0) {
+          // Lấy repair request đầu tiên
+          const firstRepairRequest = item.oldComponent.repairRequests[0];
+          repairRequestId = firstRepairRequest.id;
+          requestCode = firstRepairRequest.requestCode;
+        }
+
         return {
           id: item.id,
           proposalId: item.proposalId,
+          repairRequestId,
+          requestCode,
           oldComponentId: item.oldComponentId,
           oldComponent: item.oldComponent
             ? {

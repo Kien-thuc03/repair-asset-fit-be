@@ -46,6 +46,14 @@ export class ReplaceComponentDto {
   @IsOptional()
   @IsString({ message: "Ghi chú phải là chuỗi" })
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "ID của linh kiện mới đã được mua sắm (nếu có). Nếu có ID này, hệ thống sẽ cập nhật trạng thái linh kiện từ IN_STOCK sang INSTALLED thay vì tạo mới.",
+  })
+  @IsOptional()
+  @IsUUID("4", { message: "ID linh kiện mới phải là UUID hợp lệ" })
+  newlyPurchasedComponentId?: string;
 }
 
 /**

@@ -492,19 +492,13 @@ export class ComputerService {
       .leftJoin("assets", "a", 'a.id = c."assetId"') // ✅ Join assets qua computers.assetId
       .leftJoin("rooms", "r", "r.id = a.current_room_id") // ✅ Join rooms qua assets.current_room_id
       // Left join với repair_requests để lấy thông tin (nếu có)
+      // ✅ SỬA: Bỏ điều kiện status trong JOIN để lấy TẤT CẢ repair requests (kể cả đã hoàn thành/hủy)
+      // Điều này đảm bảo requestCode được hiển thị đúng cho tất cả các linh kiện có repair request
       .leftJoin("repair_request_components", "rrc", 'rrc."componentId" = cc.id')
       .leftJoin(
         "repair_requests",
         "rr",
-        'rr.id = rrc."repairRequestId" AND rr.status IN (:...activeStatuses)',
-        {
-          activeStatuses: [
-            RepairStatus.CHỜ_TIẾP_NHẬN,
-            RepairStatus.ĐÃ_TIẾP_NHẬN,
-            RepairStatus.ĐANG_XỬ_LÝ,
-            RepairStatus.CHỜ_THAY_THẾ,
-          ],
-        }
+        'rr.id = rrc."repairRequestId"'
       )
       .select([
         "cc.id as componentId",
@@ -581,6 +575,24 @@ export class ComputerService {
         return `cc.id NOT IN ${subQuery}`;
       });
     }
+
+    // ✅ Loại trừ các components có repair request đã hoàn thành hoặc đã hủy
+    // Chỉ lấy components không có repair request, hoặc có repair request nhưng chưa hoàn thành/hủy
+    queryBuilder.andWhere((qb) => {
+      const subQuery = qb
+        .subQuery()
+        .select('rrc2."componentId"')
+        .from("repair_request_components", "rrc2")
+        .innerJoin("repair_requests", "rr2", 'rr2.id = rrc2."repairRequestId"')
+        .where('rr2.status IN (:...completedOrCancelledStatuses)', {
+          completedOrCancelledStatuses: [
+            RepairStatus.ĐÃ_HOÀN_THÀNH,
+            RepairStatus.ĐÃ_HỦY,
+          ],
+        })
+        .getQuery();
+      return `cc.id NOT IN ${subQuery}`;
+    });
 
     // Get total count before pagination
     const totalQuery = await queryBuilder.getRawMany();
@@ -1091,23 +1103,69 @@ export class ComputerService {
       oldComponent.removedAt = new Date();
       await manager.save(ComputerComponent, oldComponent);
 
-      // 5. Tạo linh kiện mới với status INSTALLED
-      const newComponent = manager.create(ComputerComponent, {
-        computerAssetId: computerId,
-        componentType: oldComponent.componentType, // Giữ nguyên loại linh kiện
-        name: replaceDto.newItemName,
-        componentSpecs: replaceDto.newItemSpecs,
-        serialNumber: replaceDto.serialNumber || null,
-        status: ComponentStatus.INSTALLED,
-        installedAt: new Date(),
-        notes:
-          replaceDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
-      });
+      // 5. Xử lý linh kiện mới
+      let savedComponent: ComputerComponent;
 
-      const savedComponent = await manager.save(
-        ComputerComponent,
-        newComponent
-      );
+      if (replaceDto.newlyPurchasedComponentId) {
+        // Nếu có ID linh kiện mới đã được mua sắm, cập nhật trạng thái từ IN_STOCK → INSTALLED
+        const existingNewComponent = await manager.findOne(ComputerComponent, {
+          where: { id: replaceDto.newlyPurchasedComponentId },
+        });
+
+        if (!existingNewComponent) {
+          throw new NotFoundException(
+            `Không tìm thấy linh kiện mới với ID: ${replaceDto.newlyPurchasedComponentId}`
+          );
+        }
+
+        // Kiểm tra linh kiện mới có đang ở trạng thái IN_STOCK không
+        if (existingNewComponent.status !== ComponentStatus.IN_STOCK) {
+          throw new BadRequestException(
+            `Linh kiện mới phải ở trạng thái IN_STOCK, hiện tại là: ${existingNewComponent.status}`
+          );
+        }
+
+        // Cập nhật thông tin linh kiện mới
+        existingNewComponent.computerAssetId = computerId;
+        existingNewComponent.status = ComponentStatus.INSTALLED;
+        existingNewComponent.installedAt = new Date();
+        if (replaceDto.serialNumber) {
+          existingNewComponent.serialNumber = replaceDto.serialNumber;
+        }
+        if (replaceDto.notes) {
+          existingNewComponent.notes = replaceDto.notes;
+        }
+        // Cập nhật tên và thông số nếu có thay đổi
+        if (replaceDto.newItemName) {
+          existingNewComponent.name = replaceDto.newItemName;
+        }
+        if (replaceDto.newItemSpecs) {
+          existingNewComponent.componentSpecs = replaceDto.newItemSpecs;
+        }
+
+        savedComponent = await manager.save(
+          ComputerComponent,
+          existingNewComponent
+        );
+      } else {
+        // Nếu không có ID linh kiện mới, tạo mới linh kiện với status INSTALLED
+        const newComponent = manager.create(ComputerComponent, {
+          computerAssetId: computerId,
+          componentType: oldComponent.componentType, // Giữ nguyên loại linh kiện
+          name: replaceDto.newItemName,
+          componentSpecs: replaceDto.newItemSpecs,
+          serialNumber: replaceDto.serialNumber || null,
+          status: ComponentStatus.INSTALLED,
+          installedAt: new Date(),
+          notes:
+            replaceDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+        });
+
+        savedComponent = await manager.save(
+          ComputerComponent,
+          newComponent
+        );
+      }
 
       // 6. Trả về thông tin chi tiết
       return {
@@ -1214,20 +1272,69 @@ export class ComputerService {
           continue;
         }
 
-        // Tạo linh kiện mới
-        const newComponent = manager.create(ComputerComponent, {
-          computerAssetId: oldComp.computerAssetId,
-          componentType: oldComp.componentType,
-          name: item.newItemName,
-          componentSpecs: item.newItemSpecs,
-          status: ComponentStatus.IN_STOCK,
-          installedAt: new Date(),
-          notes:
-            notes ||
-            `Nhập kho từ đề xuất ${item.proposal?.proposalCode || proposalId}`,
-        });
+        // Xử lý linh kiện mới
+        let savedComponent: ComputerComponent;
 
-        const savedComp = await manager.save(ComputerComponent, newComponent);
+        if (componentDto.newlyPurchasedComponentId) {
+          // Nếu có ID linh kiện mới đã được mua sắm, cập nhật trạng thái từ IN_STOCK → INSTALLED
+          const existingNewComponent = await manager.findOne(ComputerComponent, {
+            where: { id: componentDto.newlyPurchasedComponentId },
+          });
+
+          if (!existingNewComponent) {
+            throw new NotFoundException(
+              `Không tìm thấy linh kiện mới với ID: ${componentDto.newlyPurchasedComponentId}`
+            );
+          }
+
+          // Kiểm tra linh kiện mới có đang ở trạng thái IN_STOCK không
+          if (existingNewComponent.status !== ComponentStatus.IN_STOCK) {
+            throw new BadRequestException(
+              `Linh kiện mới phải ở trạng thái IN_STOCK, hiện tại là: ${existingNewComponent.status}`
+            );
+          }
+
+          // Cập nhật thông tin linh kiện mới
+          existingNewComponent.computerAssetId = computerId;
+          existingNewComponent.status = ComponentStatus.INSTALLED;
+          existingNewComponent.installedAt = new Date();
+          if (componentDto.serialNumber) {
+            existingNewComponent.serialNumber = componentDto.serialNumber;
+          }
+          if (componentDto.notes) {
+            existingNewComponent.notes = componentDto.notes;
+          }
+          // Cập nhật tên và thông số nếu có thay đổi
+          if (componentDto.newItemName) {
+            existingNewComponent.name = componentDto.newItemName;
+          }
+          if (componentDto.newItemSpecs) {
+            existingNewComponent.componentSpecs = componentDto.newItemSpecs;
+          }
+
+          savedComponent = await manager.save(
+            ComputerComponent,
+            existingNewComponent
+          );
+        } else {
+          // Nếu không có ID linh kiện mới, tạo mới linh kiện với status INSTALLED
+          const newComponent = manager.create(ComputerComponent, {
+            computerAssetId: computerId,
+            componentType: oldComponent.componentType,
+            name: componentDto.newItemName,
+            componentSpecs: componentDto.newItemSpecs,
+            serialNumber: componentDto.serialNumber || null,
+            status: ComponentStatus.INSTALLED,
+            installedAt: new Date(),
+            notes:
+              componentDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+          });
+
+          savedComponent = await manager.save(
+            ComputerComponent,
+            newComponent
+          );
+        }
 
         // Cập nhật item
         item.newlyPurchasedComponentId = savedComp.id;
@@ -1422,6 +1529,97 @@ export class ComputerService {
               createdAt: activeRepairRequest.createdAt,
             }
           : null,
+      },
+    };
+  }
+
+  /**
+   * Xóa một linh kiện khỏi hệ thống
+   * Kiểm tra ràng buộc trước khi xóa (repair requests, replacement items)
+   *
+   * @param componentId - UUID của linh kiện cần xóa
+   * @returns Thông tin linh kiện đã xóa
+   * @throws NotFoundException nếu không tìm thấy linh kiện
+   * @throws BadRequestException nếu linh kiện đang được sử dụng
+   */
+  async deleteComponent(componentId: string) {
+    // Validate UUID format
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(componentId)) {
+      throw new NotFoundException(`ID linh kiện không hợp lệ: ${componentId}`);
+    }
+
+    // 1. Kiểm tra linh kiện có tồn tại không
+    const component = await this.componentRepository.findOne({
+      where: { id: componentId },
+      relations: ["computer", "computer.asset"],
+    });
+
+    if (!component) {
+      throw new NotFoundException(
+        `Không tìm thấy linh kiện với ID: ${componentId}`
+      );
+    }
+
+    // 2. Kiểm tra linh kiện có đang được sử dụng trong repair requests không
+    const repairRequestCount = await this.repairRequestRepository
+      .createQueryBuilder("repair")
+      .innerJoin(
+        "repair_request_components",
+        "rrc",
+        'rrc."repairRequestId" = repair.id'
+      )
+      .where('rrc."componentId" = :componentId', { componentId })
+      .getCount();
+
+    if (repairRequestCount > 0) {
+      throw new BadRequestException(
+        `Không thể xóa linh kiện này vì đang được sử dụng trong ${repairRequestCount} yêu cầu sửa chữa. Vui lòng xóa hoặc cập nhật các yêu cầu sửa chữa liên quan trước.`
+      );
+    }
+
+    // 3. Kiểm tra linh kiện có đang được sử dụng trong replacement items không
+    const replacementItemCount = await this.replacementItemRepository
+      .createQueryBuilder("item")
+      .where("item.oldComponentId = :componentId", { componentId })
+      .orWhere("item.newlyPurchasedComponentId = :componentId", {
+        componentId,
+      })
+      .getCount();
+
+    if (replacementItemCount > 0) {
+      throw new BadRequestException(
+        `Không thể xóa linh kiện này vì đang được sử dụng trong ${replacementItemCount} đề xuất thay thế. Vui lòng xóa hoặc cập nhật các đề xuất liên quan trước.`
+      );
+    }
+
+    // 4. Lưu thông tin linh kiện trước khi xóa để trả về
+    const componentInfo = {
+      id: component.id,
+      name: component.name,
+      componentType: component.componentType,
+      componentSpecs: component.componentSpecs,
+      serialNumber: component.serialNumber,
+      status: component.status,
+      computer: component.computer
+        ? {
+            id: component.computer.id,
+            machineLabel: component.computer.machineLabel,
+            assetName: component.computer.asset?.name,
+          }
+        : null,
+    };
+
+    // 5. Xóa linh kiện
+    await this.componentRepository.remove(component);
+
+    // 6. Trả về thông tin đã xóa
+    return {
+      success: true,
+      message: `Xóa linh kiện ${component.name} thành công`,
+      data: {
+        deletedComponent: componentInfo,
       },
     };
   }
