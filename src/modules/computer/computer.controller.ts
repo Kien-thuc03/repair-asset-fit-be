@@ -32,6 +32,7 @@ import {
   ReplaceComponentDto,
   ReplaceMultipleComponentsDto,
 } from "./dto/replace-component.dto";
+import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -526,120 +527,78 @@ export class ComputerController {
   }
 
   /**
-   * PATCH /computer/:computerId/replace-multiple-components
-   * Thay thế nhiều linh kiện trong máy tính cùng lúc
-   * Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện
+   * PATCH /computer/add-stock-component
+   * Thêm linh kiện mới về kho từ đề xuất thay thế (Bulk Action)
+   * Xử lý tất cả các items trong đề xuất cùng lúc
    *
-   * @param computerId - UUID của máy tính
-   * @param replaceMultipleDto - Danh sách các linh kiện cần thay thế
-   * @returns Thông tin tất cả các linh kiện đã được thay thế
+   * @param addStockDto - Thông tin đề xuất
+   * @returns Kết quả xử lý
    */
-  @Patch(":computerId/replace-multiple-components")
+  @Patch("add-stock-component")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Thay thế nhiều linh kiện trong máy tính cùng lúc",
+    summary: "Thêm linh kiện mới về kho từ đề xuất (Bulk Action)",
     description: `
-      API thay thế nhiều linh kiện trong máy tính cùng một lúc.
-      Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện.
+      API thêm linh kiện mới về kho hàng loạt dựa trên đề xuất thay thế.
+      
+      **✨ Tính năng:**
+      - ✅ Xử lý TẤT CẢ items trong đề xuất cùng lúc
+      - ✅ Tự động tạo linh kiện mới với status IN_STOCK
+      - ✅ Tự động cập nhật newlyPurchasedComponentId cho từng item
+      - ✅ Bỏ qua các items đã được xử lý trước đó
       
       **Quy trình:**
-      1. Kiểm tra tất cả linh kiện cũ có tồn tại và thuộc máy tính này
-      2. Cập nhật status tất cả linh kiện cũ thành REMOVED
-      3. Tạo tất cả linh kiện mới với status INSTALLED
-      4. Sử dụng transaction để đảm bảo tính nhất quán
+      1. Truyền proposalId của đề xuất đã được duyệt và mua hàng
+      2. Hệ thống duyệt qua từng item trong đề xuất
+      3. Tạo linh kiện mới tương ứng cho mỗi item
+      4. Trả về kết quả tổng hợp
       
-      **Dữ liệu trả về:**
-      - Thông tin máy tính
-      - Danh sách tất cả linh kiện đã được thay thế (cũ và mới)
-      - Tổng số linh kiện đã thay thế
+      **Dữ liệu cần truyền:**
+      - proposalId: UUID của đề xuất (bắt buộc)
+      - notes: Ghi chú chung (tùy chọn)
       
       **Sử dụng khi:**
-      - Hoàn thành đề xuất thay thế nhiều linh kiện
-      - Bảo trì/nâng cấp hàng loạt
-      - Thay thế nhiều linh kiện cùng lúc để tiết kiệm thời gian
-      
-      **Ưu điểm:**
-      - Thực hiện tất cả thay đổi trong một transaction
-      - Đảm bảo tính nhất quán dữ liệu
-      - Hiệu suất tốt hơn so với gọi API nhiều lần
+      - Hàng về kho theo đề xuất, muốn nhập kho nhanh tất cả
+      - Thay thế cho việc nhập từng linh kiện một
     `,
   })
-  @ApiBody({ type: ReplaceMultipleComponentsDto })
+  @ApiBody({ type: AddStockFromProposalDto })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: "Thay thế nhiều linh kiện thành công",
+    description: "Xử lý nhập kho thành công",
     schema: {
       example: {
         success: true,
-        message: "Thay thế 2 linh kiện thành công",
+        message: "Đã xử lý nhập kho cho đề xuất. Thành công: 3/3",
         data: {
-          computer: {
-            id: "123e4567-e89b-12d3-a456-426614174000",
-            machineLabel: "01",
-            assetName: "PC ASUS VivoBook",
-            roomName: "A01.03",
-          },
-          replacedComponents: [
+          proposalId: "ef6c626b-b3c1-4545-9a50-3c879aa79664",
+          totalItems: 3,
+          successCount: 3,
+          details: [
             {
-              oldComponent: {
-                id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
-                name: "RAM",
-                componentType: "RAM",
-                status: "REMOVED",
-                removedAt: "2025-11-26T10:00:00.000Z",
-              },
+              itemId: "fdad6ae9-cedd-49a8-92eb-7a4b887e3198",
+              status: "SUCCESS",
               newComponent: {
-                id: "789e4567-e89b-12d3-a456-426614174999",
-                name: "RAM Kingston",
-                componentType: "RAM",
-                componentSpecs: "16GB DDR4 3200MHz",
-                status: "INSTALLED",
-                installedAt: "2025-11-26T10:00:00.000Z",
-              },
-            },
-            {
-              oldComponent: {
-                id: "c68b1ebf-b35f-458b-9006-dda5458c8bc6",
-                name: "MAINBOARD",
-                componentType: "MAINBOARD",
-                status: "REMOVED",
-                removedAt: "2025-11-26T10:00:00.000Z",
-              },
-              newComponent: {
-                id: "999e4567-e89b-12d3-a456-426614174888",
-                name: "MSI H610M",
-                componentType: "MAINBOARD",
-                componentSpecs: "MSI H610M-A PRO",
-                status: "INSTALLED",
-                installedAt: "2025-11-26T10:00:00.000Z",
+                id: "new-uuid-1",
+                name: "Intel Core i5 10TH GEN",
+                type: "CPU",
               },
             },
           ],
-          totalReplaced: 2,
         },
       },
     },
   })
   @ApiResponse({
     status: HttpStatus.NOT_FOUND,
-    description: "Không tìm thấy máy tính hoặc linh kiện",
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: "Linh kiện không thuộc máy tính này hoặc danh sách trống",
+    description: "Không tìm thấy đề xuất hoặc items",
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
     description: "Chưa xác thực",
   })
-  replaceMultipleComponents(
-    @Param("computerId") computerId: string,
-    @Body() replaceMultipleDto: ReplaceMultipleComponentsDto
-  ) {
-    return this.computerService.replaceMultipleComponents(
-      computerId,
-      replaceMultipleDto
-    );
+  addStockComponent(@Body() addStockDto: AddStockFromProposalDto) {
+    return this.computerService.addStockFromProposal(addStockDto);
   }
 
   /**

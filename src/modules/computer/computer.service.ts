@@ -14,9 +14,11 @@ import {
   ReplaceComponentDto,
   ReplaceMultipleComponentsDto,
 } from "./dto/replace-component.dto";
+import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
 import { Computer } from "../../entities/computer.entity";
 import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
+import { ReplacementItem } from "../../entities/replacement-item.entity";
 import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
@@ -32,6 +34,8 @@ export class ComputerService {
     private readonly componentRepository: Repository<ComputerComponent>,
     @InjectRepository(RepairRequest)
     private readonly repairRequestRepository: Repository<RepairRequest>,
+    @InjectRepository(ReplacementItem)
+    private readonly replacementItemRepository: Repository<ReplacementItem>,
     private readonly dataSource: DataSource
   ) {}
 
@@ -1139,121 +1143,116 @@ export class ComputerService {
   }
 
   /**
-   * Thay thế nhiều linh kiện trong máy tính cùng lúc
-   * Dùng khi hoàn thành đề xuất thay thế có nhiều linh kiện
+   * Thêm linh kiện mới về kho từ đề xuất thay thế (Bulk Action)
+   * Xử lý tất cả các items trong đề xuất cùng lúc
    *
-   * @param computerId - UUID của máy tính
-   * @param replaceMultipleDto - Danh sách các linh kiện cần thay thế
-   * @returns Thông tin tất cả các linh kiện đã được thay thế
+   * @param dto - Chứa proposalId và notes
+   * @returns Kết quả xử lý từng item
    */
-  async replaceMultipleComponents(
-    computerId: string,
-    replaceMultipleDto: ReplaceMultipleComponentsDto
-  ) {
+  async addStockFromProposal(dto: AddStockFromProposalDto) {
+    const { proposalId, notes } = dto;
+
     // Validate UUID format
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(computerId)) {
-      throw new NotFoundException(`ID máy tính không hợp lệ: ${computerId}`);
+    if (!uuidRegex.test(proposalId)) {
+      throw new NotFoundException(`ID đề xuất không hợp lệ: ${proposalId}`);
     }
 
-    if (
-      !replaceMultipleDto.components ||
-      replaceMultipleDto.components.length === 0
-    ) {
-      throw new BadRequestException("Danh sách linh kiện không được để trống");
-    }
-
-    // Sử dụng transaction để đảm bảo tính nhất quán
+    // Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
     return await this.dataSource.transaction(async (manager) => {
-      // 1. Kiểm tra máy tính có tồn tại không
-      const computer = await manager.findOne(Computer, {
-        where: { id: computerId },
-        relations: ["asset", "room"],
+      // 1. Lấy tất cả items của đề xuất
+      const items = await manager.find(ReplacementItem, {
+        where: { proposalId },
+        relations: ["oldComponent", "proposal"],
       });
 
-      if (!computer) {
+      if (!items || items.length === 0) {
         throw new NotFoundException(
-          `Không tìm thấy máy tính với ID: ${computerId}`
+          `Không tìm thấy mục thay thế nào cho đề xuất: ${proposalId}`
         );
       }
 
       const results = [];
+      let successCount = 0;
 
-      // 2. Xử lý từng linh kiện
-      for (const componentDto of replaceMultipleDto.components) {
-        // Kiểm tra linh kiện cũ
-        const oldComponent = await manager.findOne(ComputerComponent, {
-          where: { id: componentDto.oldComponentId },
-        });
-
-        if (!oldComponent) {
-          throw new NotFoundException(
-            `Không tìm thấy linh kiện với ID: ${componentDto.oldComponentId}`
-          );
+      for (const item of items) {
+        // Skip nếu đã có linh kiện mới
+        if (item.newlyPurchasedComponentId) {
+          results.push({
+            itemId: item.id,
+            status: "SKIPPED",
+            message: "Đã có linh kiện mới",
+            componentId: item.newlyPurchasedComponentId,
+          });
+          continue;
         }
 
-        // Kiểm tra linh kiện thuộc máy tính này
-        if (oldComponent.computerAssetId !== computerId) {
-          throw new BadRequestException(
-            `Linh kiện ${oldComponent.name} không thuộc máy tính ${computer.machineLabel}`
-          );
+        // Skip nếu không có thông tin linh kiện cũ (trường hợp mua mới hoàn toàn?)
+        // Với đề xuất thay thế thì bắt buộc phải có oldComponent
+        if (!item.oldComponent) {
+          results.push({
+            itemId: item.id,
+            status: "ERROR",
+            message: "Không tìm thấy thông tin linh kiện cũ",
+          });
+          continue;
         }
 
-        // Cập nhật linh kiện cũ
-        oldComponent.status = ComponentStatus.REMOVED;
-        oldComponent.removedAt = new Date();
-        await manager.save(ComputerComponent, oldComponent);
+        const oldComp = item.oldComponent;
+
+        // Validate status linh kiện cũ
+        if (
+          oldComp.status !== ComponentStatus.FAULTY &&
+          oldComp.status !== ComponentStatus.PENDING_REPLACEMENT
+        ) {
+          results.push({
+            itemId: item.id,
+            status: "ERROR",
+            message: `Linh kiện cũ ${oldComp.name} có status không hợp lệ: ${oldComp.status}`,
+          });
+          continue;
+        }
 
         // Tạo linh kiện mới
         const newComponent = manager.create(ComputerComponent, {
-          computerAssetId: computerId,
-          componentType: oldComponent.componentType,
-          name: componentDto.newItemName,
-          componentSpecs: componentDto.newItemSpecs,
-          serialNumber: componentDto.serialNumber || null,
-          status: ComponentStatus.INSTALLED,
+          computerAssetId: oldComp.computerAssetId,
+          componentType: oldComp.componentType,
+          name: item.newItemName,
+          componentSpecs: item.newItemSpecs,
+          status: ComponentStatus.IN_STOCK,
           installedAt: new Date(),
           notes:
-            componentDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+            notes ||
+            `Nhập kho từ đề xuất ${item.proposal?.proposalCode || proposalId}`,
         });
 
-        const savedComponent = await manager.save(
-          ComputerComponent,
-          newComponent
-        );
+        const savedComp = await manager.save(ComputerComponent, newComponent);
 
+        // Cập nhật item
+        item.newlyPurchasedComponentId = savedComp.id;
+        await manager.save(ReplacementItem, item);
+
+        successCount++;
         results.push({
-          oldComponent: {
-            id: oldComponent.id,
-            name: oldComponent.name,
-            componentType: oldComponent.componentType,
-            status: oldComponent.status,
-            removedAt: oldComponent.removedAt,
-          },
+          itemId: item.id,
+          status: "SUCCESS",
           newComponent: {
-            id: savedComponent.id,
-            name: savedComponent.name,
-            componentType: savedComponent.componentType,
-            componentSpecs: savedComponent.componentSpecs,
-            status: savedComponent.status,
-            installedAt: savedComponent.installedAt,
+            id: savedComp.id,
+            name: savedComp.name,
+            type: savedComp.componentType,
           },
         });
       }
 
       return {
         success: true,
-        message: `Thay thế ${results.length} linh kiện thành công`,
+        message: `Đã xử lý nhập kho cho đề xuất. Thành công: ${successCount}/${items.length}`,
         data: {
-          computer: {
-            id: computer.id,
-            machineLabel: computer.machineLabel,
-            assetName: computer.asset?.name,
-            roomName: computer.room?.name,
-          },
-          replacedComponents: results,
-          totalReplaced: results.length,
+          proposalId,
+          totalItems: items.length,
+          successCount,
+          details: results,
         },
       };
     });
