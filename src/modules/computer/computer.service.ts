@@ -634,10 +634,6 @@ export class ComputerService {
 
     const rawResults = await queryBuilder.getRawMany();
 
-    console.log(
-      `✅ [getAvailableComponents] Found ${rawResults.length} FAULTY components (total before pagination: ${total})`
-    );
-
     // Debug: Log first few components
     if (rawResults.length > 0) {
       console.log(
@@ -1275,15 +1271,15 @@ export class ComputerService {
         // Xử lý linh kiện mới
         let savedComponent: ComputerComponent;
 
-        if (componentDto.newlyPurchasedComponentId) {
+        if (item.newlyPurchasedComponentId) {
           // Nếu có ID linh kiện mới đã được mua sắm, cập nhật trạng thái từ IN_STOCK → INSTALLED
           const existingNewComponent = await manager.findOne(ComputerComponent, {
-            where: { id: componentDto.newlyPurchasedComponentId },
+            where: { id: item.newlyPurchasedComponentId },
           });
 
           if (!existingNewComponent) {
             throw new NotFoundException(
-              `Không tìm thấy linh kiện mới với ID: ${componentDto.newlyPurchasedComponentId}`
+              `Không tìm thấy linh kiện mới với ID: ${item.newlyPurchasedComponentId}`
             );
           }
 
@@ -1295,21 +1291,18 @@ export class ComputerService {
           }
 
           // Cập nhật thông tin linh kiện mới
-          existingNewComponent.computerAssetId = computerId;
+          existingNewComponent.computerAssetId = oldComp.computerAssetId;
           existingNewComponent.status = ComponentStatus.INSTALLED;
           existingNewComponent.installedAt = new Date();
-          if (componentDto.serialNumber) {
-            existingNewComponent.serialNumber = componentDto.serialNumber;
-          }
-          if (componentDto.notes) {
-            existingNewComponent.notes = componentDto.notes;
+          if (notes) {
+            existingNewComponent.notes = notes;
           }
           // Cập nhật tên và thông số nếu có thay đổi
-          if (componentDto.newItemName) {
-            existingNewComponent.name = componentDto.newItemName;
+          if (item.newItemName) {
+            existingNewComponent.name = item.newItemName;
           }
-          if (componentDto.newItemSpecs) {
-            existingNewComponent.componentSpecs = componentDto.newItemSpecs;
+          if (item.newItemSpecs) {
+            existingNewComponent.componentSpecs = item.newItemSpecs;
           }
 
           savedComponent = await manager.save(
@@ -1319,15 +1312,15 @@ export class ComputerService {
         } else {
           // Nếu không có ID linh kiện mới, tạo mới linh kiện với status INSTALLED
           const newComponent = manager.create(ComputerComponent, {
-            computerAssetId: computerId,
-            componentType: oldComponent.componentType,
-            name: componentDto.newItemName,
-            componentSpecs: componentDto.newItemSpecs,
-            serialNumber: componentDto.serialNumber || null,
+            computerAssetId: oldComp.computerAssetId,
+            componentType: oldComp.componentType,
+            name: item.newItemName,
+            componentSpecs: item.newItemSpecs,
+            serialNumber: null,
             status: ComponentStatus.INSTALLED,
             installedAt: new Date(),
             notes:
-              componentDto.notes || `Thay thế cho linh kiện ${oldComponent.name}`,
+              notes || `Thay thế cho linh kiện ${oldComp.name}`,
           });
 
           savedComponent = await manager.save(
@@ -1337,7 +1330,7 @@ export class ComputerService {
         }
 
         // Cập nhật item
-        item.newlyPurchasedComponentId = savedComp.id;
+        item.newlyPurchasedComponentId = savedComponent.id;
         await manager.save(ReplacementItem, item);
 
         successCount++;
@@ -1345,9 +1338,9 @@ export class ComputerService {
           itemId: item.id,
           status: "SUCCESS",
           newComponent: {
-            id: savedComp.id,
-            name: savedComp.name,
-            type: savedComp.componentType,
+            id: savedComponent.id,
+            name: savedComponent.name,
+            type: savedComponent.componentType,
           },
         });
       }
