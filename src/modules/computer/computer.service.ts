@@ -634,10 +634,6 @@ export class ComputerService {
 
     const rawResults = await queryBuilder.getRawMany();
 
-    console.log(
-      `✅ [getAvailableComponents] Found ${rawResults.length} FAULTY components (total before pagination: ${total})`
-    );
-
     // Debug: Log first few components
     if (rawResults.length > 0) {
       console.log(
