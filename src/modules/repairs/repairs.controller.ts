@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -28,11 +29,20 @@ import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
 import { StartProcessingDto } from "./dto/start-processing.dto";
 import { RepairRequestResponseDto } from "./dto/repair-request-response.dto";
 import { CreateAndProcessRepairRequestDto } from "./dto/create-and-process-repair-request.dto";
+import { IsString } from "class-validator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
 import { Permissions } from "../auth/decorators/permissions.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "src/entities/user.entity";
+
+/**
+ * DTO tạm thời cho hủy yêu cầu (chỉ cần lý do)
+ */
+class CancelRepairRequestDto {
+  @IsString()
+  cancelReason: string;
+}
 
 @ApiTags("Repairs")
 @Controller("api/v1/repairs")
@@ -424,6 +434,43 @@ export class RepairsController {
     @Param("id", ParseUUIDPipe) id: string
   ): Promise<RepairRequestResponseDto> {
     return this.repairsService.findOne(id);
+  }
+
+  @Patch(":id/cancel-request")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Hủy yêu cầu sửa chữa",
+    description:
+      "Chỉ người báo lỗi (ở trạng thái CHỜ_TIẾP_NHẬN) hoặc Admin được phép hủy. Hủy sẽ hoàn tác trạng thái asset về hoạt động bình thường nếu tài sản đang bị đánh dấu hư hỏng.",
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID của yêu cầu sửa chữa",
+    format: "uuid",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        cancelReason: {
+          type: "string",
+          example: "Hủy yêu cầu do tự khắc phục được",
+        },
+      },
+      required: ["cancelReason"],
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Hủy yêu cầu sửa chữa thành công",
+    type: RepairRequestResponseDto,
+  })
+  async cancelRequest(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: CancelRepairRequestDto,
+    @CurrentUser() user: User
+  ): Promise<RepairRequestResponseDto> {
+    return this.repairsService.cancelRequest(id, body.cancelReason, user);
   }
 
   @Put(":id")
