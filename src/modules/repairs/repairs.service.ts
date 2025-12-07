@@ -1784,6 +1784,30 @@ export class RepairsService {
           asset.status = AssetStatus.IN_USE;
           await queryRunner.manager.save(asset);
         }
+
+        // ✅ QUAN TRỌNG: Nếu đã sửa được (finalStatus = ĐÃ_HOÀN_THÀNH) và có componentIds,
+        // cần chuyển component status từ FAULTY về INSTALLED vì đã sửa xong
+        if (createDto.componentIds && createDto.componentIds.length > 0) {
+          const components = await queryRunner.manager.find(ComputerComponent, {
+            where: { id: In(createDto.componentIds) },
+          });
+
+          for (const component of components) {
+            // Chỉ cập nhật nếu component đang ở trạng thái FAULTY (đã được chuyển trong create())
+            // Nếu component đã là PENDING_REPLACEMENT hoặc REMOVED thì không cập nhật
+            if (component.status === ComponentStatus.FAULTY) {
+              component.status = ComponentStatus.INSTALLED;
+              await queryRunner.manager.save(component);
+              console.log(
+                `✅ [createAndProcess] Component ${component.id} (${component.name}): FAULTY → INSTALLED (đã sửa xong tại hiện trường)`
+              );
+            } else {
+              console.log(
+                `ℹ️ [createAndProcess] Component ${component.id} (${component.name}): Status = ${component.status}, skip update`
+              );
+            }
+          }
+        }
       } else if (createDto.finalStatus === RepairStatus.CHỜ_THAY_THẾ) {
         // 🔥 Nếu finalStatus = CHỜ_THAY_THẾ → Chuyển sang status CHỜ_THAY_THẾ ngay
         requestToUpdate.status = RepairStatus.CHỜ_THAY_THẾ;
