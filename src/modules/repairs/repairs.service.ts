@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder, In } from "typeorm";
+import { Repository, SelectQueryBuilder, In, Not } from "typeorm";
 import { plainToInstance } from "class-transformer";
 import { RepairRequest } from "src/entities/repair-request.entity";
 import { RepairLog } from "src/entities/repair-log.entity";
@@ -280,13 +280,16 @@ export class RepairsService {
       }
     }
 
-    // 10. Cập nhật trạng thái tài sản nếu cần
+    // 10. Lưu trạng thái ban đầu của asset trước khi cập nhật
+    const originalAssetStatus = asset.status;
+
+    // 11. Cập nhật trạng thái tài sản nếu cần (chỉ khi đang IN_USE)
     if (asset.status === AssetStatus.IN_USE) {
       asset.status = AssetStatus.DAMAGED;
       await this.assetRepository.save(asset);
     }
 
-    // 11. Tự động phân công kỹ thuật viên dựa trên vị trí asset
+    // 12. Tự động phân công kỹ thuật viên dựa trên vị trí asset
     if (asset.currentRoom) {
       const assignedTechnician = await this.autoAssignTechnician(
         asset.currentRoom.id,
@@ -300,7 +303,7 @@ export class RepairsService {
       }
     }
 
-    // 12. Lấy thông tin đầy đủ với relations
+    // 13. Lấy thông tin đầy đủ với relations
     const fullRequest = await this.repairRequestRepository.findOne({
       where: { id: savedRequest.id },
       relations: [
@@ -312,14 +315,14 @@ export class RepairsService {
       ],
     });
 
-    // 13. Ghi log: Tạo yêu cầu sửa chữa mới
+    // 14. Ghi log: Tạo yêu cầu sửa chữa mới (lưu trạng thái ban đầu vào comment)
     await this.createRepairLog(
       savedRequest.id,
       currentUser,
       "Tạo yêu cầu sửa chữa",
       undefined,
       RepairStatus.CHỜ_TIẾP_NHẬN,
-      `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode})`
+      `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode}). Trạng thái ban đầu: ${originalAssetStatus}`
     );
 
     // 14. Transform và trả về DTO
@@ -1096,10 +1099,11 @@ export class RepairsService {
     // hoặc đã được thay thế (REMOVED), không nên cập nhật
     // Chỉ cập nhật khi repair request từ ĐANG_XỬ_LÝ → ĐÃ_HOÀN_THÀNH (đã sửa xong)
     if (oldStatus === RepairStatus.ĐANG_XỬ_LÝ) {
-      const repairRequestWithComponents = await this.repairRequestRepository.findOne({
-        where: { id },
-        relations: ["components"],
-      });
+      const repairRequestWithComponents =
+        await this.repairRequestRepository.findOne({
+          where: { id },
+          relations: ["components"],
+        });
 
       if (repairRequestWithComponents?.components) {
         for (const component of repairRequestWithComponents.components) {
@@ -1192,10 +1196,11 @@ export class RepairsService {
 
     // ✅ Khôi phục trạng thái linh kiện về INSTALLED nếu đã được chuyển sang FAULTY
     // Lấy tất cả components liên quan đến repair request này
-    const repairRequestWithComponents = await this.repairRequestRepository.findOne({
-      where: { id },
-      relations: ["components"],
-    });
+    const repairRequestWithComponents =
+      await this.repairRequestRepository.findOne({
+        where: { id },
+        relations: ["components"],
+      });
 
     if (repairRequestWithComponents?.components) {
       for (const component of repairRequestWithComponents.components) {
@@ -1205,24 +1210,39 @@ export class RepairsService {
         if (component.status === ComponentStatus.FAULTY) {
           component.status = ComponentStatus.INSTALLED;
           await this.computerComponentRepository.save(component);
-          console.log(
-            `✅ [cancelRequest] Component ${component.id} (${component.name}): FAULTY → INSTALLED (do hủy repair request)`
-          );
-        } else {
-          console.log(
-            `ℹ️ [cancelRequest] Component ${component.id} (${component.name}): Status = ${component.status}, skip rollback`
-          );
         }
       }
     }
 
-    // Khôi phục trạng thái tài sản nếu cần
-    if (
-      repairRequest.computerAsset &&
-      repairRequest.computerAsset.status === AssetStatus.DAMAGED
-    ) {
-      repairRequest.computerAsset.status = AssetStatus.IN_USE;
-      await this.assetRepository.save(repairRequest.computerAsset);
+    // Khôi phục trạng thái tài sản về hoạt động bình thường (IN_USE) khi hủy yêu cầu
+    if (repairRequest.computerAssetId) {
+      // Luôn fetch asset mới nhất từ DB để đảm bảo có dữ liệu chính xác
+      const asset = await this.assetRepository.findOne({
+        where: { id: repairRequest.computerAssetId },
+      });
+
+      if (asset) {
+        // Nếu còn yêu cầu khác đang active cho cùng asset, không khôi phục để tránh xung đột
+        // Lưu ý: Repair request hiện tại đã được set status = ĐÃ_HỦY nhưng chưa save, nên query sẽ không đếm nó
+        const otherActiveRepairs = await this.repairRequestRepository.count({
+          where: {
+            computerAssetId: asset.id,
+            id: Not(id),
+            status: In([
+              RepairStatus.CHỜ_TIẾP_NHẬN,
+              RepairStatus.ĐÃ_TIẾP_NHẬN,
+              RepairStatus.ĐANG_XỬ_LÝ,
+              RepairStatus.CHỜ_THAY_THẾ,
+            ]),
+          },
+        });
+
+        if (otherActiveRepairs === 0) {
+          // Đưa về trạng thái hoạt động bình thường
+          asset.status = AssetStatus.IN_USE;
+          await this.assetRepository.save(asset);
+        }
+      }
     }
 
     await this.repairRequestRepository.save(repairRequest);
@@ -1706,11 +1726,11 @@ export class RepairsService {
 
     // 0. Kiểm tra quyền truy cập tầng tòa nhà cho kỹ thuật viên
     // Admin và tổ trưởng kỹ thuật không cần kiểm tra, chỉ kỹ thuật viên thường mới cần
-    const isRegularTechnician = 
-      this.isUserTechnician(currentUser) && 
+    const isRegularTechnician =
+      this.isUserTechnician(currentUser) &&
       !this.isAdmin(currentUser) &&
       !currentUser.roles?.some((role) => role.code === "TO_TRUONG_KY_THUAT");
-    
+
     if (isRegularTechnician) {
       // Lấy thông tin asset để kiểm tra building và floor
       const asset = await this.assetRepository.findOne({
