@@ -584,35 +584,65 @@ export class RepairsService {
     const updatedRequest =
       await this.repairRequestRepository.save(repairRequest);
 
-    // ⚠️ Cập nhật trạng thái component thành FAULTY khi chuyển sang CHỜ_THAY_THẾ
-    if (
-      updateDto.status === RepairStatus.CHỜ_THAY_THẾ &&
-      componentIds &&
-      componentIds.length > 0
-    ) {
+    // Xử lý componentIds nếu có
+    if (componentIds && componentIds.length > 0) {
       const components = await this.computerComponentRepository.findBy({
         id: In(componentIds),
       });
 
-      for (const component of components) {
-        // Chỉ cập nhật nếu component đang ở trạng thái INSTALLED
-        // Nếu đã FAULTY hoặc PENDING_REPLACEMENT thì giữ nguyên
-        if (component.status === ComponentStatus.INSTALLED) {
-          component.status = ComponentStatus.FAULTY;
-          await this.computerComponentRepository.save(component);
-          console.log(
-            `✅ [update] Component ${component.id} (${component.name}): INSTALLED → FAULTY`
-          );
-        } else {
-          console.log(
-            `ℹ️ [update] Component ${component.id} (${component.name}): Already ${component.status}, skip update`
-          );
-        }
-      }
-
       // Liên kết components với repair request
       repairRequest.components = components;
       await this.repairRequestRepository.save(repairRequest);
+
+      // Xử lý component status dựa trên status mới
+      if (updateDto.status === RepairStatus.CHỜ_THAY_THẾ) {
+        // ⚠️ Cập nhật trạng thái component thành FAULTY khi chuyển sang CHỜ_THAY_THẾ
+        for (const component of components) {
+          // Chỉ cập nhật nếu component đang ở trạng thái INSTALLED
+          // Nếu đã FAULTY hoặc PENDING_REPLACEMENT thì giữ nguyên
+          if (component.status === ComponentStatus.INSTALLED) {
+            component.status = ComponentStatus.FAULTY;
+            await this.computerComponentRepository.save(component);
+            console.log(
+              `✅ [update] Component ${component.id} (${component.name}): INSTALLED → FAULTY (cần thay thế)`
+            );
+          } else {
+            console.log(
+              `ℹ️ [update] Component ${component.id} (${component.name}): Already ${component.status}, skip update`
+            );
+          }
+        }
+      } else if (updateDto.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+        // ✅ QUAN TRỌNG: Nếu đã sửa được (status = ĐÃ_HOÀN_THÀNH) và có componentIds,
+        // cần chuyển component status từ FAULTY về INSTALLED vì đã sửa xong
+        for (const component of components) {
+          // Chỉ cập nhật nếu component đang ở trạng thái FAULTY (đã được đánh dấu lỗi trước đó)
+          // Nếu component đã là PENDING_REPLACEMENT hoặc REMOVED thì không cập nhật
+          if (component.status === ComponentStatus.FAULTY) {
+            component.status = ComponentStatus.INSTALLED;
+            await this.computerComponentRepository.save(component);
+            console.log(
+              `✅ [update] Component ${component.id} (${component.name}): FAULTY → INSTALLED (đã sửa xong)`
+            );
+          } else {
+            console.log(
+              `ℹ️ [update] Component ${component.id} (${component.name}): Status = ${component.status}, skip update`
+            );
+          }
+        }
+      }
+    }
+
+    // ✅ Cập nhật trạng thái tài sản từ DAMAGED về IN_USE khi chuyển sang ĐÃ_HOÀN_THÀNH
+    // Áp dụng cho cả trường hợp có componentIds và không có componentIds (ví dụ: lỗi phần mềm)
+    if (updateDto.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+      if (repairRequest.computerAsset && repairRequest.computerAsset.status === AssetStatus.DAMAGED) {
+        repairRequest.computerAsset.status = AssetStatus.IN_USE;
+        await this.assetRepository.save(repairRequest.computerAsset);
+        console.log(
+          `✅ [update] Asset ${repairRequest.computerAsset.id} (${repairRequest.computerAsset.name}): DAMAGED → IN_USE (đã sửa xong)`
+        );
+      }
     }
 
     // Lấy thông tin đầy đủ với relations

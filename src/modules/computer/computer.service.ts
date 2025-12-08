@@ -40,6 +40,29 @@ export class ComputerService {
   ) {}
 
   /**
+   * Tính priority của repair request để ưu tiên hiển thị
+   * Priority càng thấp càng ưu tiên: CHỜ_THAY_THẾ (1) > active khác (2) > completed (3)
+   * @param status - Status của repair request
+   * @returns Priority number (1 = cao nhất, 3 = thấp nhất)
+   */
+  private getRepairRequestPriority(status: string | null): number {
+    if (!status) return 999; // Không có repair request
+    
+    if (status === RepairStatus.CHỜ_THAY_THẾ) {
+      return 1; // Ưu tiên cao nhất
+    }
+    
+    if (
+      status !== RepairStatus.ĐÃ_HOÀN_THÀNH &&
+      status !== RepairStatus.ĐÃ_HỦY
+    ) {
+      return 2; // Active status khác
+    }
+    
+    return 3; // Completed hoặc cancelled
+  }
+
+  /**
    * Lấy danh sách tất cả máy tính trong một phòng cụ thể
    * Bao gồm thông tin asset, room và các components của máy tính
    *
@@ -492,8 +515,7 @@ export class ComputerService {
       .leftJoin("assets", "a", 'a.id = c."assetId"') // ✅ Join assets qua computers.assetId
       .leftJoin("rooms", "r", "r.id = a.current_room_id") // ✅ Join rooms qua assets.current_room_id
       // Left join với repair_requests để lấy thông tin (nếu có)
-      // ✅ SỬA: Bỏ điều kiện status trong JOIN để lấy TẤT CẢ repair requests (kể cả đã hoàn thành/hủy)
-      // Điều này đảm bảo requestCode được hiển thị đúng cho tất cả các linh kiện có repair request
+      // ✅ Lưu ý: Một component có thể có nhiều repair requests, sẽ xử lý sau để lấy ưu tiên nhất
       .leftJoin("repair_request_components", "rrc", 'rrc."componentId" = cc.id')
       .leftJoin(
         "repair_requests",
@@ -576,29 +598,86 @@ export class ComputerService {
       });
     }
 
-    // ✅ Loại trừ các components có repair request đã hoàn thành hoặc đã hủy
-    // Chỉ lấy components không có repair request, hoặc có repair request nhưng chưa hoàn thành/hủy
-    queryBuilder.andWhere((qb) => {
-      const subQuery = qb
-        .subQuery()
-        .select('rrc2."componentId"')
-        .from("repair_request_components", "rrc2")
-        .innerJoin("repair_requests", "rr2", 'rr2.id = rrc2."repairRequestId"')
-        .where('rr2.status IN (:...completedOrCancelledStatuses)', {
-          completedOrCancelledStatuses: [
-            RepairStatus.ĐÃ_HOÀN_THÀNH,
-            RepairStatus.ĐÃ_HỦY,
-          ],
-        })
-        .getQuery();
-      return `cc.id NOT IN ${subQuery}`;
-    });
+    // ✅ Loại trừ các components có TẤT CẢ repair requests đã hoàn thành hoặc đã hủy
+    // Component được hiển thị nếu:
+    // - Không có repair request nào, HOẶC
+    // - Có ít nhất một repair request đang active (chưa hoàn thành/hủy)
+    // Component bị loại trừ nếu:
+    // - Có repair request VÀ tất cả đều đã hoàn thành/hủy
+    // Logic: Giữ lại nếu (có active repair request HOẶC không có completed repair request)
+    queryBuilder.andWhere(
+      `(
+        EXISTS (
+          SELECT 1 
+          FROM repair_request_components rrc_active
+          INNER JOIN repair_requests rr_active ON rr_active.id = rrc_active."repairRequestId"
+          WHERE rrc_active."componentId" = cc.id
+          AND rr_active.status NOT IN (:...completedOrCancelledStatuses)
+        )
+        OR NOT EXISTS (
+          SELECT 1 
+          FROM repair_request_components rrc_completed
+          INNER JOIN repair_requests rr_completed ON rr_completed.id = rrc_completed."repairRequestId"
+          WHERE rrc_completed."componentId" = cc.id
+          AND rr_completed.status IN (:...completedOrCancelledStatuses)
+        )
+      )`,
+      {
+        completedOrCancelledStatuses: [
+          RepairStatus.ĐÃ_HOÀN_THÀNH,
+          RepairStatus.ĐÃ_HỦY,
+        ],
+      }
+    );
 
-    // Get total count before pagination
-    const totalQuery = await queryBuilder.getRawMany();
-    const total = totalQuery.length;
+    // Get total count - cần lấy tất cả results để xử lý unique sau đó mới pagination
+    // Lưu ý: Không pagination ở query level vì cần xử lý unique trước
+    const allRawResults = await queryBuilder.getRawMany();
 
-    // Sorting
+    // ✅ Lưu ý: Không pagination ở query level vì cần xử lý unique trước
+    // Sẽ pagination sau khi xử lý unique components
+    const rawResults = await queryBuilder.getRawMany();
+
+    // ✅ Xử lý để chỉ giữ lại repair request ưu tiên nhất cho mỗi component
+    // Ưu tiên: CHỜ_THAY_THẾ > các status active khác > completed
+    // Group by componentId và chọn repair request có priority cao nhất
+    const componentMap = new Map<string, any>();
+    
+    for (const row of rawResults) {
+      const componentId = row.componentid;
+      
+      // Nếu component chưa có trong map, thêm vào
+      if (!componentMap.has(componentId)) {
+        componentMap.set(componentId, row);
+        continue;
+      }
+      
+      // So sánh priority với row hiện tại trong map
+      const existingRow = componentMap.get(componentId);
+      const existingPriority = this.getRepairRequestPriority(existingRow.repairstatus);
+      const currentPriority = this.getRepairRequestPriority(row.repairstatus);
+      
+      // Nếu current row có priority cao hơn, thay thế
+      if (currentPriority < existingPriority) {
+        componentMap.set(componentId, row);
+      } else if (currentPriority === existingPriority) {
+        // Nếu cùng priority, chọn row có createdAt mới hơn
+        const existingDate = existingRow.repaircreatedat 
+          ? new Date(existingRow.repaircreatedat).getTime() 
+          : 0;
+        const currentDate = row.repaircreatedat 
+          ? new Date(row.repaircreatedat).getTime() 
+          : 0;
+        if (currentDate > existingDate) {
+          componentMap.set(componentId, row);
+        }
+      }
+    }
+    
+    // Convert map values to array
+    let uniqueResults = Array.from(componentMap.values());
+
+    // ✅ Áp dụng sorting sau khi xử lý unique
     const allowedSortFields = [
       "createdAt",
       "componentName",
@@ -607,50 +686,68 @@ export class ComputerService {
     ];
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
 
-    // Map sortBy to actual column names
-    let orderByField = 'cc."installedAt"';
-    switch (sortField) {
-      case "componentName":
-        orderByField = "cc.name";
-        break;
-      case "assetName":
-        orderByField = "a.name";
-        break;
-      case "requestCode":
-        orderByField = 'rr."requestCode"';
-        break;
-      case "createdAt":
-        orderByField = 'rr."createdAt"';
-        break;
-      default:
-        orderByField = 'cc."installedAt"';
-    }
+    uniqueResults.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
 
-    queryBuilder.orderBy(orderByField, sortOrder);
+      switch (sortField) {
+        case "componentName":
+          aValue = a.componentname || "";
+          bValue = b.componentname || "";
+          break;
+        case "assetName":
+          aValue = a.assetname || "";
+          bValue = b.assetname || "";
+          break;
+        case "requestCode":
+          aValue = a.requestcode || "";
+          bValue = b.requestcode || "";
+          break;
+        case "createdAt":
+          aValue = a.repaircreatedat
+            ? new Date(a.repaircreatedat).getTime()
+            : 0;
+          bValue = b.repaircreatedat
+            ? new Date(b.repaircreatedat).getTime()
+            : 0;
+          break;
+        default:
+          aValue = a.installedat ? new Date(a.installedat).getTime() : 0;
+          bValue = b.installedat ? new Date(b.installedat).getTime() : 0;
+      }
 
-    // Pagination
+      if (sortOrder === "ASC") {
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+      } else {
+        return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+      }
+    });
+
+    // ✅ Tính total sau khi unique
+    const total = uniqueResults.length;
+
+    // ✅ Áp dụng pagination sau khi unique và sort
     const skip = (page - 1) * limit;
-    queryBuilder.offset(skip).limit(limit);
-
-    const rawResults = await queryBuilder.getRawMany();
+    const paginatedResults = uniqueResults.slice(skip, skip + limit);
 
     // Debug: Log first few components
-    if (rawResults.length > 0) {
+    if (paginatedResults.length > 0) {
       console.log(
         "📦 Sample components:",
-        rawResults.slice(0, 3).map((r) => ({
+        paginatedResults.slice(0, 3).map((r) => ({
           id: r.componentid,
           name: r.componentname,
           status: r.componentstatus,
           type: r.componenttype,
           assetName: r.assetname,
           requestCode: r.requestcode || "No repair request",
+          repairStatus: r.repairstatus,
         }))
       );
     }
 
     // Map to DTO
-    const data = rawResults.map((row) => ({
+    const data = paginatedResults.map((row) => ({
       componentId: row.componentid,
       componentName: row.componentname,
       componentType: row.componenttype,
@@ -664,7 +761,7 @@ export class ComputerService {
       buildingName: row.buildingname,
       floor: row.floor,
       machineLabel: row.machinelabel,
-      // Thông tin repair request (nullable - có thể không có)
+      // Thông tin repair request ưu tiên nhất (nullable - có thể không có)
       repairRequestId: row.repairrequestid || null,
       requestCode: row.requestcode || null,
       repairStatus: row.repairstatus || null,
