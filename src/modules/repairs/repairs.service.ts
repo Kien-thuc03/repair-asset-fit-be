@@ -322,7 +322,7 @@ export class RepairsService {
       "Tạo yêu cầu sửa chữa",
       undefined,
       RepairStatus.CHỜ_TIẾP_NHẬN,
-      `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode}). Trạng thái ban đầu: ${originalAssetStatus}`
+      `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode}).}`
     );
 
     // 14. Transform và trả về DTO
