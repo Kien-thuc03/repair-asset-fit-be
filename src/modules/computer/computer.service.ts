@@ -15,6 +15,7 @@ import {
   ReplaceMultipleComponentsDto,
 } from "./dto/replace-component.dto";
 import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
+import { CreateComponentDto } from "./dto/create-component.dto";
 import { Computer } from "../../entities/computer.entity";
 import { ComputerComponent } from "../../entities/computer-component.entity";
 import { RepairRequest } from "../../entities/repair-request.entity";
@@ -1453,6 +1454,154 @@ export class ComputerService {
         },
       };
     });
+  }
+
+  /**
+   * Tạo linh kiện mới vào kho
+   * Linh kiện sẽ được tạo với status IN_STOCK
+   *
+   * @param createComponentDto - Dữ liệu tạo linh kiện mới
+   * @returns Thông tin linh kiện vừa được tạo
+   * @throws NotFoundException nếu không tìm thấy máy tính với computerAssetId
+   * @throws BadRequestException nếu serialNumber đã tồn tại
+   */
+  async createComponent(createComponentDto: CreateComponentDto) {
+    const {
+      computerAssetId,
+      componentType,
+      name,
+      componentSpecs,
+      serialNumber,
+      notes,
+    } = createComponentDto;
+
+    let finalComputerAssetId: string | null = null;
+
+    // Nếu có computerAssetId, kiểm tra máy tính có tồn tại không
+    if (computerAssetId) {
+      // Validate UUID format
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(computerAssetId)) {
+        throw new NotFoundException(`ID máy tính không hợp lệ: ${computerAssetId}`);
+      }
+
+      // Kiểm tra máy tính có tồn tại không
+      // computerAssetId có thể là computer.id hoặc asset.id
+      // Thử tìm computer bằng assetId trước
+      let computer = await this.computerRepository.findOne({
+        where: { assetId: computerAssetId },
+        relations: ["asset"],
+      });
+
+      // Nếu không tìm thấy, thử tìm bằng computer.id
+      if (!computer) {
+        computer = await this.computerRepository.findOne({
+          where: { id: computerAssetId },
+          relations: ["asset"],
+        });
+      }
+
+      if (!computer) {
+        throw new NotFoundException(
+          `Không tìm thấy máy tính với ID: ${computerAssetId}`
+        );
+      }
+
+      finalComputerAssetId = computer.assetId;
+    }
+    // Nếu không có computerAssetId, linh kiện chỉ nhập vào kho, chưa lắp đặt
+
+    // Kiểm tra serialNumber nếu có
+    if (serialNumber) {
+      const existingComponent = await this.componentRepository.findOne({
+        where: { serialNumber },
+      });
+
+      if (existingComponent) {
+        throw new BadRequestException(
+          `Linh kiện với số serial ${serialNumber} đã tồn tại`
+        );
+      }
+    }
+
+    // Tạo component mới với status IN_STOCK
+    const newComponent = this.componentRepository.create({
+      computerAssetId: finalComputerAssetId,
+      componentType,
+      name,
+      componentSpecs: componentSpecs || null,
+      serialNumber: serialNumber || null,
+      status: ComponentStatus.IN_STOCK,
+      installedAt: new Date(),
+      notes: notes || null,
+    });
+
+    const savedComponent = await this.componentRepository.save(newComponent);
+
+    return {
+      success: true,
+      message: "Đã thêm linh kiện vào kho thành công",
+      data: savedComponent,
+    };
+  }
+
+  /**
+   * Lấy danh sách tất cả linh kiện có trạng thái IN_STOCK (trong kho)
+   *
+   * @returns Danh sách linh kiện trong kho kèm thông tin máy tính và vị trí
+   */
+  async getStockComponents() {
+    const components = await this.componentRepository.find({
+      where: {
+        status: ComponentStatus.IN_STOCK,
+      },
+      relations: ["computer", "computer.asset", "computer.room"],
+      order: {
+        installedAt: "DESC", // Sắp xếp theo ngày nhập kho mới nhất
+      },
+    });
+
+    // Transform data để trả về thông tin đầy đủ
+    const result = components.map((component) => ({
+      id: component.id,
+      componentType: component.componentType,
+      name: component.name,
+      componentSpecs: component.componentSpecs,
+      serialNumber: component.serialNumber,
+      status: component.status,
+      installedAt: component.installedAt,
+      notes: component.notes,
+      computer: component.computer
+        ? {
+            id: component.computer.id,
+            machineLabel: component.computer.machineLabel,
+            asset: component.computer.asset
+              ? {
+                  id: component.computer.asset.id,
+                  name: component.computer.asset.name,
+                  ktCode: component.computer.asset.ktCode,
+                  fixedCode: component.computer.asset.fixedCode,
+                }
+              : null,
+            room: component.computer.room
+              ? {
+                  id: component.computer.room.id,
+                  name: component.computer.room.name,
+                  roomCode: component.computer.room.roomCode,
+                  building: component.computer.room.building,
+                  floor: component.computer.room.floor,
+                }
+              : null,
+          }
+        : null,
+    }));
+
+    return {
+      success: true,
+      message: `Tìm thấy ${result.length} linh kiện trong kho`,
+      data: result,
+    };
   }
 
   /**

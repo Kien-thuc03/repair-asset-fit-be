@@ -33,6 +33,7 @@ import {
   ReplaceMultipleComponentsDto,
 } from "./dto/replace-component.dto";
 import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
+import { CreateComponentDto } from "./dto/create-component.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { User } from "../../entities/user.entity";
@@ -170,6 +171,44 @@ export class ComputerController {
    * @param componentId - UUID của component
    * @returns Thông tin component và computer
    */
+  /**
+   * GET /computer/components/stock
+   * Lấy danh sách tất cả linh kiện có trạng thái IN_STOCK (trong kho)
+   *
+   * @returns Danh sách linh kiện trong kho
+   */
+  @Get("components/stock")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy danh sách linh kiện trong kho",
+    description: `
+      API lấy danh sách tất cả linh kiện có trạng thái IN_STOCK (đang trong kho).
+      
+      **Dữ liệu trả về bao gồm:**
+      - Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật, serial number)
+      - Thông tin máy tính/asset chứa linh kiện
+      - Vị trí (tòa nhà, phòng, tầng)
+      - Ngày nhập kho
+      - Ghi chú
+      
+      **Use Cases:**
+      - Xem danh sách linh kiện có sẵn trong kho
+      - Quản lý tồn kho linh kiện
+      - Chọn linh kiện để thay thế khi sửa chữa
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách linh kiện trong kho thành công",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  getStockComponents() {
+    return this.computerService.getStockComponents();
+  }
+
   @Get("component/:componentId")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -599,6 +638,93 @@ export class ComputerController {
   })
   addStockComponent(@Body() addStockDto: AddStockFromProposalDto) {
     return this.computerService.addStockFromProposal(addStockDto);
+  }
+
+  /**
+   * POST /computer/component
+   * Thêm linh kiện mới vào kho
+   * Linh kiện sẽ được tạo với status IN_STOCK
+   *
+   * @param createComponentDto - Dữ liệu tạo linh kiện mới
+   * @returns Thông tin linh kiện vừa được tạo
+   */
+  @Post("component")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Thêm linh kiện mới vào kho",
+    description: `
+      API thêm linh kiện mới vào kho với trạng thái IN_STOCK.
+      
+      **Thông tin cần cung cấp:**
+      - **computerAssetId**: ID của máy tính/asset để lưu linh kiện (có thể là một computer đại diện cho kho)
+      - **componentType**: Loại linh kiện (CPU, RAM, STORAGE, ...)
+      - **name**: Tên/Model của linh kiện
+      - **componentSpecs**: Thông số kỹ thuật (tùy chọn)
+      - **serialNumber**: Số serial (tùy chọn)
+      - **notes**: Ghi chú (tùy chọn)
+      
+      **Kết quả:**
+      - Tạo mới component với status = IN_STOCK
+      - Trả về thông tin component vừa được tạo
+      
+      **Use cases:**
+      - Nhập linh kiện mới vào kho
+      - Thêm linh kiện dự phòng vào hệ thống
+      - Quản lý tồn kho linh kiện
+    `,
+  })
+  @ApiBody({
+    type: CreateComponentDto,
+    description: "Dữ liệu tạo linh kiện mới",
+    examples: {
+      example1: {
+        summary: "Thêm RAM vào kho",
+        value: {
+          computerAssetId: "c2179e7d-fca7-4020-b89d-3cebf773e1a4",
+          componentType: "RAM",
+          name: "Kingston Fury Beast DDR5 16GB",
+          componentSpecs: "16GB 5200MHz",
+          serialNumber: "SN123456789ABC",
+          notes: "Linh kiện mới nhập kho",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: "Tạo linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Đã thêm linh kiện vào kho thành công",
+        data: {
+          id: "new-component-uuid",
+          computerAssetId: "c2179e7d-fca7-4020-b89d-3cebf773e1a4",
+          componentType: "RAM",
+          name: "Kingston Fury Beast DDR5 16GB",
+          componentSpecs: "16GB 5200MHz",
+          serialNumber: "SN123456789ABC",
+          status: "IN_STOCK",
+          installedAt: "2024-01-15T10:30:00.000Z",
+          notes: "Linh kiện mới nhập kho",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Dữ liệu không hợp lệ",
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính với computerAssetId",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  createComponent(@Body() createComponentDto: CreateComponentDto) {
+    return this.computerService.createComponent(createComponentDto);
   }
 
   /**
