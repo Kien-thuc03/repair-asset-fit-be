@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -87,9 +88,7 @@ export class ReplacementProposalsController {
                 "RAM hiện tại (8GB) gặp lỗi Blue Screen thường xuyên, không đủ dung lượng cho phần mềm thiết kế",
             },
           ],
-          repairRequestIds: [
-            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-          ],
+          repairRequestIds: ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"],
         },
       },
       "multiple-components": {
@@ -598,5 +597,49 @@ export class ReplacementProposalsController {
     @CurrentUser() user: User
   ): Promise<{ message: string }> {
     return this.replacementProposalsService.remove(id, user);
+  }
+
+  /**
+   * Từ chối đề xuất và khôi phục trạng thái linh kiện liên quan
+   */
+  @Patch(":id/reject")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Từ chối đề xuất thay thế (rollback linh kiện)",
+    description:
+      "Đặt trạng thái đề xuất về ĐÃ_TỪ_CHỐI và rollback linh kiện từ PENDING_REPLACEMENT về FAULTY.",
+  })
+  @ApiParam({
+    name: "id",
+    description: "ID đề xuất thay thế cần từ chối",
+    format: "uuid",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          example: "Không đủ ngân sách hoặc thông tin chưa đầy đủ",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Từ chối đề xuất thành công",
+    type: ReplacementProposalResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy đề xuất",
+  })
+  rejectProposal(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body("reason") reason: string,
+    @CurrentUser() user: User
+  ) {
+    console.log("🚫 Controller /reject", { id, reason, user: user.id });
+    return this.replacementProposalsService.reject(id, reason, user);
   }
 }
