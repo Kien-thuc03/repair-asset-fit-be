@@ -24,6 +24,7 @@ import { User } from "../../entities/user.entity";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
 import { AssetStatus } from "../../common/shared/AssetStatus";
+import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
 import * as QRCode from "qrcode";
 
 @Injectable()
@@ -593,6 +594,12 @@ export class ComputerService {
           .subQuery()
           .select('ri."oldComponentId"')
           .from("replacement_items", "ri")
+          .innerJoin(
+            "replacement_proposals",
+            "rp",
+            'rp.id = ri."proposalId" AND rp.status != :rejectedStatus',
+            { rejectedStatus: ReplacementStatus.ĐÃ_TỪ_CHỐI }
+          )
           .where('ri."oldComponentId" IS NOT NULL')
           .getQuery();
         return `cc.id NOT IN ${subQuery}`;
