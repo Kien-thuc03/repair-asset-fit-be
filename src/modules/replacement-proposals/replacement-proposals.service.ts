@@ -496,6 +496,7 @@ export class ReplacementProposalsService {
       ],
       [ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH]: [
         ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH,
+        ReplacementStatus.CHỜ_XÁC_MINH, // Cho phép Phòng QT nhận xác minh trực tiếp
         ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH,
       ],
       [ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH]: [ReplacementStatus.CHỜ_XÁC_MINH],
