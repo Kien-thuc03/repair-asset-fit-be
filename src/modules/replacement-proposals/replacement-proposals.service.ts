@@ -294,6 +294,7 @@ export class ReplacementProposalsService {
         "items",
         "items.oldComponent",
         "items.oldComponent.computer",
+        "items.oldComponent.computer.asset",
         "items.oldComponent.computer.room",
         "items.oldComponent.repairRequests",
         "items.newlyPurchasedComponent",
@@ -332,6 +333,9 @@ export class ReplacementProposalsService {
         "principalApprover",
         "items",
         "items.oldComponent",
+        "items.oldComponent.computer",
+        "items.oldComponent.computer.asset",
+        "items.oldComponent.computer.room",
         "items.oldComponent.repairRequests",
         "repairRequests",
       ],
@@ -496,6 +500,7 @@ export class ReplacementProposalsService {
       ],
       [ReplacementStatus.KHOA_ĐÃ_DUYỆT_TỜ_TRÌNH]: [
         ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH,
+        ReplacementStatus.CHỜ_XÁC_MINH, // Cho phép Phòng QT nhận xác minh trực tiếp
         ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH,
       ],
       [ReplacementStatus.ĐÃ_DUYỆT_TỜ_TRÌNH]: [ReplacementStatus.CHỜ_XÁC_MINH],
@@ -593,7 +598,10 @@ export class ReplacementProposalsService {
         let repairRequestId: string | undefined;
         let requestCode: string | undefined;
 
-        if (item.oldComponent?.repairRequests && item.oldComponent.repairRequests.length > 0) {
+        if (
+          item.oldComponent?.repairRequests &&
+          item.oldComponent.repairRequests.length > 0
+        ) {
           // Lấy repair request đầu tiên
           const firstRepairRequest = item.oldComponent.repairRequests[0];
           repairRequestId = firstRepairRequest.id;
@@ -751,5 +759,62 @@ export class ReplacementProposalsService {
       // Giải phóng query runner
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Từ chối đề xuất và rollback trạng thái linh kiện
+   */
+  async reject(
+    id: string,
+    reason: string | undefined,
+    currentUser: User
+  ): Promise<ReplacementProposalResponseDto> {
+    console.log("🚫 reject proposal start", {
+      id,
+      reason,
+      user: currentUser.id,
+    });
+    const proposal = await this.replacementProposalRepository.findOne({
+      where: { id },
+      relations: ["items", "items.oldComponent", "repairRequests"],
+    });
+
+    if (!proposal) {
+      throw new NotFoundException(
+        `Không tìm thấy đề xuất thay thế với ID: ${id}`
+      );
+    }
+
+    // Chỉ cho phép từ chối khi chưa hoàn tất mua sắm
+    if (proposal.status === ReplacementStatus.ĐÃ_HOÀN_TẤT_MUA_SẮM) {
+      throw new BadRequestException(
+        "Không thể từ chối đề xuất đã hoàn tất mua sắm."
+      );
+    }
+
+    // Cập nhật trạng thái đề xuất (đúng enum ĐÃ_TỪ_CHỐI)
+    proposal.status = ReplacementStatus.ĐÃ_TỪ_CHỐI;
+    if (reason) {
+      proposal.description = `${proposal.description || ""}\n[REJECT]: ${reason}`;
+    }
+    await this.replacementProposalRepository.save(proposal);
+
+    // Rollback trạng thái linh kiện: PENDING_REPLACEMENT -> FAULTY
+    if (proposal.items) {
+      for (const item of proposal.items) {
+        if (item.oldComponent) {
+          const comp = await this.computerComponentRepository.findOne({
+            where: { id: item.oldComponent.id },
+          });
+          if (comp && comp.status === ComponentStatus.PENDING_REPLACEMENT) {
+            comp.status = ComponentStatus.FAULTY;
+            await this.computerComponentRepository.save(comp);
+          }
+        }
+      }
+    }
+
+    console.log("🚫 reject proposal done", { id, status: proposal.status });
+    return this.findOne(id);
   }
 }

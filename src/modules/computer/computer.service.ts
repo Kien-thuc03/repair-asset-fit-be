@@ -1370,7 +1370,7 @@ export class ComputerService {
         let savedComponent: ComputerComponent;
 
         if (item.newlyPurchasedComponentId) {
-          // Nếu có ID linh kiện mới đã được mua sắm, cập nhật trạng thái từ IN_STOCK → INSTALLED
+          // Nếu đã có linh kiện mới mua sắm, chỉ nhập kho (IN_STOCK), không tự lắp đặt
           const existingNewComponent = await manager.findOne(ComputerComponent, {
             where: { id: item.newlyPurchasedComponentId },
           });
@@ -1388,14 +1388,15 @@ export class ComputerService {
             );
           }
 
-          // Cập nhật thông tin linh kiện mới
+          // Cập nhật thông tin linh kiện mới: giữ trạng thái IN_STOCK, chưa gán installedAt
           existingNewComponent.computerAssetId = oldComp.computerAssetId;
-          existingNewComponent.status = ComponentStatus.INSTALLED;
-          existingNewComponent.installedAt = new Date();
+          existingNewComponent.status = ComponentStatus.IN_STOCK;
+          // Cột installedAt NOT NULL, set thời điểm nhập kho
+          existingNewComponent.installedAt =
+            existingNewComponent.installedAt || new Date();
           if (notes) {
             existingNewComponent.notes = notes;
           }
-          // Cập nhật tên và thông số nếu có thay đổi
           if (item.newItemName) {
             existingNewComponent.name = item.newItemName;
           }
@@ -1408,17 +1409,17 @@ export class ComputerService {
             existingNewComponent
           );
         } else {
-          // Nếu không có ID linh kiện mới, tạo mới linh kiện với status INSTALLED
+          // Nếu chưa có linh kiện mới, tạo mới ở trạng thái IN_STOCK (nhập kho), chưa lắp đặt
           const newComponent = manager.create(ComputerComponent, {
             computerAssetId: oldComp.computerAssetId,
             componentType: oldComp.componentType,
             name: item.newItemName,
             componentSpecs: item.newItemSpecs,
             serialNumber: null,
-            status: ComponentStatus.INSTALLED,
+            status: ComponentStatus.IN_STOCK,
+            // Cột installedAt NOT NULL, dùng thời điểm nhập kho
             installedAt: new Date(),
-            notes:
-              notes || `Thay thế cho linh kiện ${oldComp.name}`,
+            notes: notes || `Thay thế cho linh kiện ${oldComp.name}`,
           });
 
           savedComponent = await manager.save(
