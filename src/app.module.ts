@@ -19,6 +19,7 @@ import { AssetSoftwareModule } from "./modules/asset-software/asset-software.mod
 import { SoftwareProposalsModule } from "./modules/software-proposals/software-proposals.module";
 import { UploadModule } from './modules/upload/upload.module';
 import { ReplacementProposalsModule } from "./modules/replacement-proposals/replacement-proposals.module";
+import { StatisticsModule } from "./modules/statistics/statistics.module";
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -58,6 +59,7 @@ import { ReplacementProposalsModule } from "./modules/replacement-proposals/repl
     SoftwareProposalsModule,
     UploadModule,
     ReplacementProposalsModule,
+    StatisticsModule,
   ],
   providers: [
     {
