@@ -398,7 +398,7 @@ export class RepairsController {
     status: 404,
     description: "Không tìm thấy yêu cầu sửa chữa",
   })
-  @Permissions("PERM_VIEW_REPAIR", "RA_PERM_VIEW_REPAIR")
+  // @Permissions("PERM_VIEW_REPAIR", "RA_PERM_VIEW_REPAIR")
   async getRepairLogs(@Param("id", ParseUUIDPipe) id: string) {
     return this.repairsService.getRepairLogs(id);
   }
