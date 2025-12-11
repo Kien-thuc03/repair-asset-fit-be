@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Like, Between, DataSource, In } from "typeorm";
@@ -18,9 +19,11 @@ import { ReplacementStatus } from "../../common/shared/ReplacementStatus";
 import { RepairStatus } from "../../common/shared/RepairStatus";
 import { ComponentStatus } from "../../common/shared/ComponentStatus";
 import { User } from "../../entities/user.entity";
+import { EmailService } from "../email/email.service";
 
 @Injectable()
 export class ReplacementProposalsService {
+  private readonly logger = new Logger(ReplacementProposalsService.name);
   constructor(
     @InjectRepository(ReplacementProposal)
     private replacementProposalRepository: Repository<ReplacementProposal>,
@@ -30,7 +33,8 @@ export class ReplacementProposalsService {
     private repairRequestRepository: Repository<RepairRequest>,
     @InjectRepository(ComputerComponent)
     private computerComponentRepository: Repository<ComputerComponent>,
-    private dataSource: DataSource
+    private dataSource: DataSource,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -125,8 +129,31 @@ export class ReplacementProposalsService {
 
       await queryRunner.commitTransaction();
 
-      // Return the created proposal with all relations
-      return this.findOne(savedProposal.id);
+      // Lấy dữ liệu đầy đủ
+      const full = await this.findOne(savedProposal.id);
+
+      // Gửi email cho tổ trưởng kỹ thuật
+      try {
+        const teamLeadEmails = await this.getTeamLeadEmails();
+        await this.emailService.sendReplacementProposalCreatedEmail({
+          teamLeadEmails,
+          proposalCode: full.proposalCode,
+          title: full.title,
+          description: full.description,
+        });
+        this.logger.log(
+          `✅ Đã gửi email đề xuất thay thế mới cho tổ trưởng: ${teamLeadEmails.join(
+            ", "
+          )}`
+        );
+      } catch (error) {
+        this.logger.error(
+          "❌ Failed to send replacement proposal created email",
+          error
+        );
+      }
+
+      return full;
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -338,6 +365,7 @@ export class ReplacementProposalsService {
         "items.oldComponent.computer.room",
         "items.oldComponent.repairRequests",
         "repairRequests",
+        "repairRequests.assignedTechnician",
       ],
     });
 
@@ -393,6 +421,47 @@ export class ReplacementProposalsService {
     // 🔥 MỚI: Khi proposal được duyệt (ĐÃ_DUYỆT) → Cập nhật tất cả repair requests liên quan thành CHỜ_THAY_THẾ
     if (updateDto.status === ReplacementStatus.ĐÃ_DUYỆT) {
       await this.updateRelatedRepairRequests(proposal);
+    }
+
+    // Gửi email khi hoàn tất mua sắm
+    if (updateDto.status === ReplacementStatus.ĐÃ_HOÀN_TẤT_MUA_SẮM) {
+      try {
+        const proposerEmail = proposal.proposer?.email;
+        const proposerName = proposal.proposer?.fullName;
+        const technicianEmails = Array.from(
+          new Set(
+            (proposal.repairRequests || [])
+              .map((rr) => rr.assignedTechnician?.email)
+              .filter((email): email is string => !!email)
+          )
+        );
+
+        if (proposerEmail || technicianEmails.length > 0) {
+          await this.emailService.sendReplacementProcurementDoneEmail({
+            proposerEmail: proposerEmail || "",
+            proposerName,
+            technicianEmails,
+            proposalCode: proposal.proposalCode,
+          });
+          this.logger.log(
+            `✅ Đã gửi email hoàn tất mua sắm cho proposer và KTV liên quan: ${[
+              proposerEmail,
+              ...technicianEmails,
+            ]
+              .filter(Boolean)
+              .join(", ")}`
+          );
+        } else {
+          this.logger.warn(
+            `⚠️ Không có email proposer/KTV để gửi khi hoàn tất mua sắm đề xuất ${proposal.proposalCode}`
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          "❌ Failed to send replacement procurement email",
+          error
+        );
+      }
     }
 
     return this.findOne(id);
@@ -769,11 +838,6 @@ export class ReplacementProposalsService {
     reason: string | undefined,
     currentUser: User
   ): Promise<ReplacementProposalResponseDto> {
-    console.log("🚫 reject proposal start", {
-      id,
-      reason,
-      user: currentUser.id,
-    });
     const proposal = await this.replacementProposalRepository.findOne({
       where: { id },
       relations: ["items", "items.oldComponent", "repairRequests"],
@@ -792,8 +856,8 @@ export class ReplacementProposalsService {
       );
     }
 
-    // Cập nhật trạng thái đề xuất (đúng enum ĐÃ_TỪ_CHỐI)
-    proposal.status = ReplacementStatus.ĐÃ_TỪ_CHỐI;
+    // Cập nhật trạng thái đề xuất
+    proposal.status = ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH;
     if (reason) {
       proposal.description = `${proposal.description || ""}\n[REJECT]: ${reason}`;
     }
@@ -814,7 +878,22 @@ export class ReplacementProposalsService {
       }
     }
 
-    console.log("🚫 reject proposal done", { id, status: proposal.status });
     return this.findOne(id);
+  }
+
+  /**
+   * Lấy email các tổ trưởng kỹ thuật
+   */
+  private async getTeamLeadEmails(): Promise<string[]> {
+    const teamLeads = await this.replacementProposalRepository.manager
+      .createQueryBuilder(User, "user")
+      .leftJoin("user.roles", "role")
+      .where("role.code = :code", { code: "TO_TRUONG_KY_THUAT" })
+      .andWhere("user.deletedAt IS NULL")
+      .getMany();
+
+    return teamLeads
+      .map((u) => u.email)
+      .filter((email): email is string => !!email);
   }
 }

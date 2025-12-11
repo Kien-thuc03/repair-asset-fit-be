@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, SelectQueryBuilder, In, Not } from "typeorm";
@@ -18,6 +19,7 @@ import { ComputerSoftware } from "src/entities/computer-software.entity";
 import { Software } from "src/entities/software.entity";
 import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { Room } from "src/entities/room.entity";
+import { EmailService } from "../email/email.service";
 import { CreateRepairRequestDto } from "./dto/create-repair-request.dto";
 import { UpdateRepairRequestDto } from "./dto/update-repair-request.dto";
 import { RepairRequestFilterDto } from "./dto/repair-request-filter.dto";
@@ -31,6 +33,7 @@ import { ErrorType } from "src/common/shared/ErrorType";
 
 @Injectable()
 export class RepairsService {
+  private readonly logger = new Logger(RepairsService.name);
   constructor(
     @InjectRepository(RepairRequest)
     private readonly repairRequestRepository: Repository<RepairRequest>,
@@ -51,7 +54,8 @@ export class RepairsService {
     @InjectRepository(TechnicianAssignment)
     private readonly technicianAssignmentRepository: Repository<TechnicianAssignment>,
     @InjectRepository(Room)
-    private readonly roomRepository: Repository<Room>
+    private readonly roomRepository: Repository<Room>,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -324,6 +328,47 @@ export class RepairsService {
       RepairStatus.CHỜ_TIẾP_NHẬN,
       `Tạo yêu cầu sửa chữa cho tài sản: ${asset.name} (${asset.ktCode})`
     );
+
+    // Gửi email thông báo cho KTV hoặc tổ trưởng
+    try {
+      const technician = fullRequest?.assignedTechnician;
+      if (technician?.email) {
+        const roomInfo = fullRequest?.computerAsset?.currentRoom
+          ? `${fullRequest.computerAsset.currentRoom.building || ""} - ${fullRequest.computerAsset.currentRoom.roomNumber || ""}`
+          : undefined;
+
+        await this.emailService.sendRepairCreatedEmail({
+          technicianEmail: technician.email,
+          technicianName: technician.fullName,
+          requestCode,
+          assetName: fullRequest?.computerAsset?.name,
+          roomInfo,
+          description: createDto.description,
+        });
+      } else {
+        const teamLeadEmails = await this.getTeamLeadEmails();
+        const firstLead = teamLeadEmails[0];
+        if (firstLead) {
+          await this.emailService.sendRepairCreatedEmail({
+            technicianEmail: firstLead,
+            technicianName: "Tổ trưởng kỹ thuật",
+            requestCode,
+            assetName: fullRequest?.computerAsset?.name,
+            roomInfo: fullRequest?.computerAsset?.currentRoom
+              ? `${fullRequest.computerAsset.currentRoom.building || ""} - ${fullRequest.computerAsset.currentRoom.roomNumber || ""}`
+              : undefined,
+            description: createDto.description,
+          });
+        } else {
+          this.logger.warn(
+            `Không tìm thấy email tổ trưởng kỹ thuật để thông báo yêu cầu ${requestCode}`
+          );
+        }
+      }
+      this.logger.log(`✅ Đã gửi email thông báo yêu cầu mới ${requestCode}`);
+    } catch (error) {
+      this.logger.error("❌ Failed to send repair created email", error);
+    }
 
     // 14. Transform và trả về DTO
     return this.transformToResponseDto(fullRequest);
@@ -639,7 +684,10 @@ export class RepairsService {
     // ✅ Cập nhật trạng thái tài sản từ DAMAGED về IN_USE khi chuyển sang ĐÃ_HOÀN_THÀNH
     // Áp dụng cho cả trường hợp có componentIds và không có componentIds (ví dụ: lỗi phần mềm)
     if (updateDto.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
-      if (repairRequest.computerAsset && repairRequest.computerAsset.status === AssetStatus.DAMAGED) {
+      if (
+        repairRequest.computerAsset &&
+        repairRequest.computerAsset.status === AssetStatus.DAMAGED
+      ) {
         repairRequest.computerAsset.status = AssetStatus.IN_USE;
         await this.assetRepository.save(repairRequest.computerAsset);
         console.log(
@@ -670,6 +718,53 @@ export class RepairsService {
         updateDto.status,
         updateDto.resolutionNotes || "Cập nhật thông tin yêu cầu sửa chữa"
       );
+    }
+
+    // Gửi email khi hoàn thành (trường hợp hoàn thành qua update API)
+    if (updateDto.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
+      if (fullRequest?.reporter?.email) {
+        try {
+          await this.emailService.sendRepairCompletedEmail({
+            reporterEmail: fullRequest.reporter.email,
+            reporterName: fullRequest.reporter.fullName,
+            requestCode: fullRequest.requestCode || "",
+            resolutionNotes: updateDto.resolutionNotes,
+          });
+          this.logger.log(
+            `✅ Đã gửi email hoàn thành (update) cho ${fullRequest.reporter.email}`
+          );
+        } catch (error) {
+          this.logger.error(
+            "❌ Failed to send repair completed email (update)",
+            error
+          );
+        }
+      } else {
+        this.logger.warn(
+          `⚠️ Reporter không có email, bỏ qua gửi thông báo hoàn thành (update) cho yêu cầu ${fullRequest?.requestCode}`
+        );
+      }
+    }
+
+    // Gửi email khi chuyển sang CHỜ_THAY_THẾ
+    if (updateDto.status === RepairStatus.CHỜ_THAY_THẾ) {
+      try {
+        const teamLeadEmails = await this.getTeamLeadEmails();
+        const componentNames =
+          fullRequest?.components?.map((c) => c.name).filter(Boolean) || [];
+        await this.emailService.sendRepairWaitingReplacementEmail({
+          reporterEmail: fullRequest?.reporter?.email,
+          reporterName: fullRequest?.reporter?.fullName,
+          teamLeadEmails,
+          requestCode: fullRequest?.requestCode || "",
+          components: componentNames,
+        });
+        this.logger.log(
+          `✅ Đã gửi email CHỜ_THAY_THẾ cho yêu cầu ${fullRequest?.requestCode}`
+        );
+      } catch (error) {
+        this.logger.error("❌ Failed to send waiting replacement email", error);
+      }
     }
 
     return this.transformToResponseDto(fullRequest);
@@ -1089,7 +1184,7 @@ export class RepairsService {
   ): Promise<RepairRequestResponseDto> {
     const repairRequest = await this.repairRequestRepository.findOne({
       where: { id },
-      relations: ["computerAsset"],
+      relations: ["computerAsset", "reporter"],
     });
 
     if (!repairRequest) {
@@ -1179,6 +1274,27 @@ export class RepairsService {
       RepairStatus.ĐÃ_HOÀN_THÀNH,
       resolutionNotes
     );
+
+    // Gửi email cho người báo lỗi
+    if (repairRequest.reporter?.email) {
+      try {
+        await this.emailService.sendRepairCompletedEmail({
+          reporterEmail: repairRequest.reporter.email,
+          reporterName: repairRequest.reporter.fullName,
+          requestCode: repairRequest.requestCode,
+          resolutionNotes,
+        });
+        this.logger.log(
+          `✅ Đã gửi email hoàn thành cho ${repairRequest.reporter.email}`
+        );
+      } catch (error) {
+        this.logger.error("❌ Failed to send repair completed email", error);
+      }
+    } else {
+      this.logger.warn(
+        `⚠️ Reporter không có email, bỏ qua gửi thông báo hoàn thành cho yêu cầu ${repairRequest.requestCode}`
+      );
+    }
 
     return this.findOne(id);
   }
@@ -1558,6 +1674,22 @@ export class RepairsService {
         ["KY_THUAT_VIEN", "TO_TRUONG_KY_THUAT"].includes(role.code)
       ) || false
     );
+  }
+
+  /**
+   * Lấy email các tổ trưởng kỹ thuật
+   */
+  private async getTeamLeadEmails(): Promise<string[]> {
+    const teamLeads = await this.userRepository
+      .createQueryBuilder("user")
+      .leftJoin("user.roles", "role")
+      .where("role.code = :code", { code: "TO_TRUONG_KY_THUAT" })
+      .andWhere("user.deletedAt IS NULL")
+      .getMany();
+
+    return teamLeads
+      .map((u) => u.email)
+      .filter((email): email is string => !!email);
   }
 
   /**

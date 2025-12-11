@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, SelectQueryBuilder, DataSource, In } from "typeorm";
@@ -22,9 +23,11 @@ import { SoftwareProposalFilterDto } from "./dto/software-proposal-filter.dto";
 import { SoftwareProposalResponseDto } from "./dto/software-proposal-response.dto";
 import { CompleteSoftwareProposalDto } from "./dto/complete-software-proposal.dto";
 import { SoftwareProposalStatus } from "src/common/shared/SoftwareProposalStatus";
+import { EmailService } from "../email/email.service";
 
 @Injectable()
 export class SoftwareProposalsService {
+  private readonly logger = new Logger(SoftwareProposalsService.name);
   constructor(
     @InjectRepository(SoftwareProposal)
     private readonly softwareProposalRepository: Repository<SoftwareProposal>,
@@ -42,7 +45,8 @@ export class SoftwareProposalsService {
     private readonly computerRepository: Repository<Computer>,
     @InjectRepository(ComputerSoftware)
     private readonly computerSoftwareRepository: Repository<ComputerSoftware>,
-    private readonly dataSource: DataSource
+    private readonly dataSource: DataSource,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -105,7 +109,7 @@ export class SoftwareProposalsService {
     }
 
     // 6. Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
-    return await this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // 7. Tạo mã đề xuất tự động
       const proposalCode = await this.generateProposalCode();
 
@@ -143,6 +147,44 @@ export class SoftwareProposalsService {
 
       return this.transformToResponseDto(fullProposal);
     });
+
+    // Gửi email cho tổ trưởng kỹ thuật (người duyệt đầu tiên)
+    try {
+      const teamLeadEmails = await this.getTeamLeadEmails();
+      if (teamLeadEmails.length > 0) {
+        const roomName = result.room?.name;
+        const softwareNames =
+          result.items?.map((item) => item.softwareName).filter(Boolean) || [];
+
+        await Promise.all(
+          teamLeadEmails.map((email) =>
+            this.emailService.sendSoftwareProposalAssignedEmail({
+              technicianEmail: email,
+              technicianName: "Tổ trưởng kỹ thuật",
+              proposalCode: result.proposalCode,
+              roomName,
+              softwareList: softwareNames,
+              reason: result.reason,
+            })
+          )
+        );
+
+        this.logger.log(
+          `✅ Đã gửi email đề xuất phần mềm mới cho tổ trưởng: ${teamLeadEmails.join(
+            ", "
+          )}`
+        );
+      } else {
+        this.logger.warn("⚠️ Không tìm thấy tổ trưởng kỹ thuật để gửi email duyệt đề xuất phần mềm");
+      }
+    } catch (error) {
+      this.logger.error(
+        "❌ Failed to send email notify team lead for software proposal",
+        error
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -535,7 +577,37 @@ export class SoftwareProposalsService {
         ],
       });
 
-      return this.transformToResponseDto(fullProposal);
+      const response = this.transformToResponseDto(fullProposal);
+
+      // Gửi email cho người đề xuất (giảng viên) khi trang bị xong
+      if (response.proposer?.email) {
+        try {
+          const softwareNames =
+            response.items?.map((item) => item.softwareName).filter(Boolean) ||
+            [];
+          await this.emailService.sendSoftwareProvisionedEmail({
+            proposerEmail: response.proposer.email,
+            proposerName: response.proposer.fullName,
+            proposalCode: response.proposalCode,
+            roomName: response.room?.name,
+            softwareList: softwareNames,
+          });
+          this.logger.log(
+            `✅ Đã gửi email hoàn thành trang bị phần mềm cho ${response.proposer.email}`
+          );
+        } catch (error) {
+          this.logger.error(
+            "❌ Failed to send software provisioned email",
+            error
+          );
+        }
+      } else {
+        this.logger.warn(
+          `⚠️ Proposer không có email, bỏ qua gửi thông báo hoàn thành đề xuất ${response.proposalCode}`
+        );
+      }
+
+      return response;
     });
   }
 
@@ -608,6 +680,22 @@ export class SoftwareProposalsService {
         ["KY_THUAT_VIEN", "TO_TRUONG_KY_THUAT"].includes(role.code)
       ) || false
     );
+  }
+
+  /**
+   * Lấy email các tổ trưởng kỹ thuật
+   */
+  private async getTeamLeadEmails(): Promise<string[]> {
+    const teamLeads = await this.userRepository
+      .createQueryBuilder("user")
+      .leftJoin("user.roles", "role")
+      .where("role.code = :code", { code: "TO_TRUONG_KY_THUAT" })
+      .andWhere("user.deletedAt IS NULL")
+      .getMany();
+
+    return teamLeads
+      .map((u) => u.email)
+      .filter((email): email is string => !!email);
   }
 
   /**
