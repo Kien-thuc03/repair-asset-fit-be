@@ -590,7 +590,7 @@ export class ReplacementProposalsService {
       items: proposal.items?.map((item) => {
         const room = item.oldComponent?.computer?.room;
         const roomLocation = room
-          ? `${room.building || ""} - ${room.roomNumber || ""}`.trim()
+          ? `${room.building || ""} ${room.floor || ""} - ${room.roomNumber || ""}`.trim()
           : undefined;
         const computerName = item.oldComponent?.computer?.asset?.name;
 
