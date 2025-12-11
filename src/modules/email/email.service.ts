@@ -361,6 +361,42 @@ export class EmailService {
   }
 
   /**
+   * Gửi thông báo cho KTV khi có đề xuất phần mềm mới được gán
+   */
+  async sendSoftwareProposalAssignedEmail(params: {
+    technicianEmail: string;
+    technicianName?: string;
+    proposalCode: string;
+    roomName?: string;
+    softwareList?: string[];
+    reason?: string;
+  }) {
+    const {
+      technicianEmail,
+      technicianName,
+      proposalCode,
+      roomName,
+      softwareList,
+      reason,
+    } = params;
+    const subject = `[DXPM] Đề xuất phần mềm mới - ${proposalCode}`;
+    const listHtml =
+      softwareList && softwareList.length > 0
+        ? `<p><b>Danh sách phần mềm:</b> ${softwareList.join(", ")}</p>`
+        : "";
+    const html = `
+      <h3>Xin chào ${technicianName || "Kỹ thuật viên"},</h3>
+      <p>Bạn được phân công xử lý đề xuất phần mềm <b>${proposalCode}</b>.</p>
+      ${roomName ? `<p><b>Phòng:</b> ${roomName}</p>` : ""}
+      ${listHtml}
+      ${reason ? `<p><b>Lý do:</b> ${reason}</p>` : ""}
+      <p>Vui lòng đăng nhập để duyệt/xử lý.</p>
+    `;
+
+    await this.sendEmail(technicianEmail, subject, html);
+  }
+
+  /**
    * Gửi thông báo khi hoàn tất mua sắm linh kiện thay thế
    */
   async sendReplacementProcurementDoneEmail(params: {

@@ -10,6 +10,7 @@ import { User } from "src/entities/user.entity";
 import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { Computer } from "src/entities/computer.entity";
 import { ComputerSoftware } from "src/entities/computer-software.entity";
+import { EmailModule } from "../email/email.module";
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ComputerSoftware } from "src/entities/computer-software.entity";
       Computer,
       ComputerSoftware,
     ]),
+    EmailModule,
   ],
   controllers: [SoftwareProposalsController],
   providers: [SoftwareProposalsService],
