@@ -769,11 +769,6 @@ export class ReplacementProposalsService {
     reason: string | undefined,
     currentUser: User
   ): Promise<ReplacementProposalResponseDto> {
-    console.log("🚫 reject proposal start", {
-      id,
-      reason,
-      user: currentUser.id,
-    });
     const proposal = await this.replacementProposalRepository.findOne({
       where: { id },
       relations: ["items", "items.oldComponent", "repairRequests"],
@@ -792,8 +787,8 @@ export class ReplacementProposalsService {
       );
     }
 
-    // Cập nhật trạng thái đề xuất (đúng enum ĐÃ_TỪ_CHỐI)
-    proposal.status = ReplacementStatus.ĐÃ_TỪ_CHỐI;
+    // Cập nhật trạng thái đề xuất
+    proposal.status = ReplacementStatus.ĐÃ_TỪ_CHỐI_TỜ_TRÌNH;
     if (reason) {
       proposal.description = `${proposal.description || ""}\n[REJECT]: ${reason}`;
     }
@@ -814,7 +809,6 @@ export class ReplacementProposalsService {
       }
     }
 
-    console.log("🚫 reject proposal done", { id, status: proposal.status });
     return this.findOne(id);
   }
 }

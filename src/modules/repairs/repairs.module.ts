@@ -12,6 +12,7 @@ import { ComputerSoftware } from "src/entities/computer-software.entity";
 import { Software } from "src/entities/software.entity";
 import { TechnicianAssignment } from "src/entities/technician-assignment.entity";
 import { Room } from "src/entities/room.entity";
+import { EmailModule } from "../email/email.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { Room } from "src/entities/room.entity";
       TechnicianAssignment,
       Room,
     ]),
+    EmailModule,
   ],
   controllers: [RepairsController],
   providers: [RepairsService],
