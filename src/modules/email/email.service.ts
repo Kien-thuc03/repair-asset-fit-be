@@ -407,7 +407,20 @@ export class EmailService {
   }) {
     const { proposerEmail, proposerName, technicianEmails, proposalCode } =
       params;
-    const recipients = [proposerEmail, ...technicianEmails.filter(Boolean)];
+    const recipients = Array.from(
+      new Set(
+        [proposerEmail, ...technicianEmails].filter(
+          (email): email is string => !!email
+        )
+      )
+    );
+
+    if (recipients.length === 0) {
+      this.logger.warn(
+        `⚠️ No recipients for replacement procurement done email of ${proposalCode}`
+      );
+      return;
+    }
     const subject = `[DXTT] Đã hoàn tất mua sắm - ${proposalCode}`;
     const html = `
       <h3>Xin chào ${proposerName || "Anh/Chị"},</h3>
@@ -416,5 +429,34 @@ export class EmailService {
     `;
 
     await this.sendEmail(recipients, subject, html);
+  }
+
+  /**
+   * Gửi thông báo khi tạo đề xuất thay thế tới tổ trưởng kỹ thuật
+   */
+  async sendReplacementProposalCreatedEmail(params: {
+    teamLeadEmails: string[];
+    proposalCode: string;
+    title?: string;
+    description?: string;
+  }) {
+    const { teamLeadEmails, proposalCode, title, description } = params;
+    if (!teamLeadEmails || teamLeadEmails.length === 0) {
+      this.logger.warn(
+        `⚠️ No team lead emails to notify for replacement proposal ${proposalCode}`
+      );
+      return;
+    }
+
+    const subject = `[DXTT] Đề xuất thay thế mới - ${proposalCode}`;
+    const html = `
+      <h3>Xin chào Tổ trưởng kỹ thuật,</h3>
+      <p>Có đề xuất thay thế mới cần duyệt: <b>${proposalCode}</b>.</p>
+      ${title ? `<p><b>Tiêu đề:</b> ${title}</p>` : ""}
+      ${description ? `<p><b>Mô tả:</b> ${description}</p>` : ""}
+      <p>Vui lòng đăng nhập hệ thống để duyệt/tiếp tục xử lý.</p>
+    `;
+
+    await this.sendEmail(teamLeadEmails, subject, html);
   }
 }
