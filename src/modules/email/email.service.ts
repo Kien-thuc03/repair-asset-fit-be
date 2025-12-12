@@ -62,7 +62,7 @@ export class EmailService {
     fullName: string,
     resetToken: string
   ): Promise<void> {
-    const resetUrl = `${this.configService.get<string>("FRONTEND_URL") || "http://localhost:3003"}/reset-password?token=${resetToken}`;
+    const resetUrl = `${this.configService.get<string>("FRONTEND_URL")}/reset-password?token=${resetToken}`;
 
     const htmlContent = `
             <!DOCTYPE html>
@@ -136,7 +136,7 @@ export class EmailService {
                         <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>
                         <p>Vui lòng nhấp vào nút bên dưới để đặt lại mật khẩu:</p>
                         <div style="text-align: center;">
-                            <a href="${resetUrl}" class="button text-white">Đặt lại mật khẩu</a>
+                            <a href="${resetUrl}" class="button text-white" style="color: white;">Đặt lại mật khẩu</a>
                         </div>
                         <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
                         <p style="word-break: break-all; color: #2563eb;">${resetUrl}</p>
@@ -256,7 +256,9 @@ export class EmailService {
         ${roomInfo ? `<li><b>Vị trí:</b> ${roomInfo}</li>` : ""}
       </ul>
       ${description ? `<p><b>Mô tả:</b> ${description}</p>` : ""}
-      <p>Vui lòng đăng nhập hệ thống để tiếp nhận.</p>
+      <p>Vui lòng đăng nhập hệ thống để tiếp nhận. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
     await this.sendEmail(technicianEmail, subject, html);
   }
@@ -278,6 +280,9 @@ export class EmailService {
       <p>Yêu cầu sửa chữa <b>${requestCode}</b> đã được hoàn thành.</p>
       ${resolutionNotes ? `<p><b>Kết quả:</b> ${resolutionNotes}</p>` : ""}
       <p>Vui lòng kiểm tra thiết bị và phản hồi nếu còn vấn đề.</p>
+      <p>Vui lòng đăng nhập hệ thống để kiểm tra. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
     await this.sendEmail(reporterEmail, subject, html);
   }
@@ -322,6 +327,9 @@ export class EmailService {
       <p>Yêu cầu sửa chữa <b>${requestCode}</b> đã chuyển sang trạng thái <b>CHỜ_THAY_THẾ</b>.</p>
       ${componentsHtml}
       <p>Vui lòng lập/duyệt đề xuất thay thế để tiếp tục xử lý.</p>
+      <p>Vui lòng đăng nhập hệ thống để lập/duyệt đề xuất. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
 
     await this.sendEmail(recipients, subject, html);
@@ -355,6 +363,9 @@ export class EmailService {
       ${roomName ? `<p><b>Phòng:</b> ${roomName}</p>` : ""}
       ${listHtml}
       <p>Vui lòng kiểm tra và phản hồi nếu cần hỗ trợ thêm.</p>
+      <p>Vui lòng đăng nhập hệ thống để duyệt/xử lý. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
 
     await this.sendEmail(proposerEmail, subject, html);
@@ -390,7 +401,9 @@ export class EmailService {
       ${roomName ? `<p><b>Phòng:</b> ${roomName}</p>` : ""}
       ${listHtml}
       ${reason ? `<p><b>Lý do:</b> ${reason}</p>` : ""}
-      <p>Vui lòng đăng nhập để duyệt/xử lý.</p>
+      <p>Vui lòng đăng nhập hệ thống để duyệt/xử lý. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
 
     await this.sendEmail(technicianEmail, subject, html);
@@ -426,6 +439,9 @@ export class EmailService {
       <h3>Xin chào ${proposerName || "Anh/Chị"},</h3>
       <p>Đề xuất thay thế <b>${proposalCode}</b> đã hoàn tất mua sắm.</p>
       <p>Vui lòng tiến hành thay thế linh kiện và cập nhật hệ thống.</p>
+      <p>Vui lòng đăng nhập hệ thống để xử lý. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
 
     await this.sendEmail(recipients, subject, html);
@@ -455,6 +471,9 @@ export class EmailService {
       ${title ? `<p><b>Tiêu đề:</b> ${title}</p>` : ""}
       ${description ? `<p><b>Mô tả:</b> ${description}</p>` : ""}
       <p>Vui lòng đăng nhập hệ thống để duyệt/tiếp tục xử lý.</p>
+      <p>Vui lòng đăng nhập hệ thống để duyệt/tiếp tục xử lý. <a href="${this.configService.get<string>("FRONTEND_URL")}/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${this.configService.get<string>("FRONTEND_URL")}/login</p>
     `;
 
     await this.sendEmail(teamLeadEmails, subject, html);

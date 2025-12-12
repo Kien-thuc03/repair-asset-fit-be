@@ -334,7 +334,7 @@ export class RepairsService {
       const technician = fullRequest?.assignedTechnician;
       if (technician?.email) {
         const roomInfo = fullRequest?.computerAsset?.currentRoom
-          ? `${fullRequest.computerAsset.currentRoom.building || ""} - ${fullRequest.computerAsset.currentRoom.roomNumber || ""}`
+          ? `Tòa nhà: ${fullRequest.computerAsset.currentRoom.building || ""} - Tầng: ${fullRequest.computerAsset.currentRoom.floor || ""} - Mã phòng: ${fullRequest.computerAsset.currentRoom.roomCode || ""}`
           : undefined;
 
         await this.emailService.sendRepairCreatedEmail({
@@ -355,7 +355,7 @@ export class RepairsService {
             requestCode,
             assetName: fullRequest?.computerAsset?.name,
             roomInfo: fullRequest?.computerAsset?.currentRoom
-              ? `${fullRequest.computerAsset.currentRoom.building || ""} - ${fullRequest.computerAsset.currentRoom.roomNumber || ""}`
+              ? `Tòa nhà: ${fullRequest.computerAsset.currentRoom.building || ""} - Tầng: ${fullRequest.computerAsset.currentRoom.floor || ""} - Mã phòng: ${fullRequest.computerAsset.currentRoom.roomCode || ""}`
               : undefined,
             description: createDto.description,
           });
