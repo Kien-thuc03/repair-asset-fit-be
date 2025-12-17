@@ -720,6 +720,30 @@ export class RepairsService {
       );
     }
 
+    // Gửi email khi chuyển sang ĐÃ_TIẾP_NHẬN
+    if (
+      updateDto.status === RepairStatus.ĐÃ_TIẾP_NHẬN &&
+      oldStatus !== RepairStatus.ĐÃ_TIẾP_NHẬN &&
+      fullRequest?.reporter?.email
+    ) {
+      try {
+        await this.emailService.sendRepairAcceptedEmail({
+          reporterEmail: fullRequest.reporter.email,
+          reporterName: fullRequest.reporter.fullName,
+          requestCode: fullRequest.requestCode || "",
+          technicianName: fullRequest.assignedTechnician?.fullName,
+        });
+        this.logger.log(
+          `✅ Đã gửi email ĐÃ_TIẾP_NHẬN cho ${fullRequest.reporter.email}`
+        );
+      } catch (error) {
+        this.logger.error(
+          "❌ Failed to send repair accepted email (ĐÃ_TIẾP_NHẬN)",
+          error
+        );
+      }
+    }
+
     // Gửi email khi hoàn thành (trường hợp hoàn thành qua update API)
     if (updateDto.status === RepairStatus.ĐÃ_HOÀN_THÀNH) {
       if (fullRequest?.reporter?.email) {
