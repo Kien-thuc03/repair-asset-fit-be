@@ -264,6 +264,37 @@ export class EmailService {
   }
 
   /**
+   * Gửi thông báo cho người báo lỗi khi yêu cầu đã được kỹ thuật viên tiếp nhận
+   */
+  async sendRepairAcceptedEmail(params: {
+    reporterEmail: string;
+    reporterName?: string;
+    requestCode: string;
+    technicianName?: string;
+  }) {
+    const { reporterEmail, reporterName, requestCode, technicianName } = params;
+    const subject = `[YCSC] Đã tiếp nhận yêu cầu ${requestCode}`;
+    const html = `
+      <h3>Xin chào ${reporterName || "Thầy/Cô"},</h3>
+      <p>Yêu cầu sửa chữa <b>${requestCode}</b> của bạn đã được kỹ thuật viên tiếp nhận.</p>
+      ${
+        technicianName
+          ? `<p>Kỹ thuật viên phụ trách: <b>${technicianName}</b>.</p>`
+          : ""
+      }
+      <p>Thiết bị sẽ được kiểm tra và xử lý trong thời gian sớm nhất.</p>
+      <p>Vui lòng đăng nhập hệ thống để theo dõi tiến độ. <a href="${
+        this.configService.get<string>("FRONTEND_URL")
+      }/login">Đăng nhập</a></p>
+      <p>Hoặc sao chép và dán liên kết sau vào trình duyệt:</p>
+      <p style="word-break: break-all; color: #2563eb;">${
+        this.configService.get<string>("FRONTEND_URL")
+      }/login</p>
+    `;
+    await this.sendEmail(reporterEmail, subject, html);
+  }
+
+  /**
    * Gửi thông báo khi hoàn thành sửa chữa tới người báo lỗi
    */
   async sendRepairCompletedEmail(params: {
