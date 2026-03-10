@@ -20,8 +20,8 @@ export class ComputerComponent {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ comment: 'FK đến máy tính cha' })
-    computerAssetId: string;
+    @Column({ nullable: true, comment: 'FK đến máy tính cha (null nếu linh kiện chỉ trong kho, chưa lắp đặt)' })
+    computerAssetId: string | null;
 
     @Column({
         type: 'enum',
@@ -57,9 +57,9 @@ export class ComputerComponent {
     notes?: string;
 
     // Relations
-    @ManyToOne(() => Computer, (computer) => computer.components)
+    @ManyToOne(() => Computer, (computer) => computer.components, { nullable: true })
     @JoinColumn({ name: 'computerAssetId' })
-    computer: Computer;
+    computer: Computer | null;
 
     @OneToMany(() => ReplacementItem, (item) => item.oldComponent)
     replacementItemsAsOld?: ReplacementItem[];

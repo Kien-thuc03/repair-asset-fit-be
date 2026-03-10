@@ -9,6 +9,8 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Query,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -16,6 +18,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { RoomsService } from "./rooms.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
@@ -61,6 +64,26 @@ export class RoomsController {
   @ApiBearerAuth()
   async findAll(): Promise<RoomResponseDto[]> {
     return this.roomsService.findAll();
+  }
+
+  @Get("unit")
+  @ApiOperation({
+    summary: "Lấy danh sách phòng theo Khoa Công nghệ Thông tin",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Rooms retrieved successfully",
+    type: [RoomResponseDto],
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Unit not found",
+  })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @ApiBearerAuth()
+  async findByUnit(): Promise<RoomResponseDto[]> {
+    const unitId = "e576addc-19ef-4bee-a44b-c26d2eebf489";
+    return this.roomsService.findByUnit(unitId);
   }
 
   @Get(":id")

@@ -162,7 +162,7 @@ export class UnitsService {
     try {
       const units = await this.unitRepository.find({
         where: { type },
-        relations: ["representative", "rooms"],
+        relations: ["representative", "rooms", "parentUnit"],
         order: { createdAt: "DESC" },
       });
       return plainToInstance(UnitResponseDto, units, {
@@ -207,7 +207,7 @@ export class UnitsService {
   async findOne(id: string): Promise<UnitResponseDto> {
     const unit = await this.unitRepository.findOne({
       where: { id },
-      relations: ["representative", "rooms"],
+      relations: ["representative", "rooms", "parentUnit"],
     });
 
     if (!unit) {

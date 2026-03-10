@@ -28,8 +28,8 @@ import { Alert } from "src/entities/alert.entity";
 //repair entities
 import { Computer } from "src/entities/computer.entity";
 import { ComputerComponent } from "src/entities/computer-component.entity";
+import { ComputerSoftware } from "src/entities/computer-software.entity";
 import { Software } from "src/entities/software.entity";
-import { AssetSoftware } from "src/entities/asset-software.entity";
 import { RepairRequest } from "src/entities/repair-request.entity";
 import { RepairLog } from "src/entities/repair-log.entity";
 import { ReplacementProposal } from "src/entities/replacement-proposal.entity";
@@ -97,7 +97,7 @@ export const TypeOrmAsyncConfig: TypeOrmModuleAsyncOptions = {
         ReplacementItem,
         // Software entities
         Software,
-        AssetSoftware,
+        ComputerSoftware,
         SoftwareProposal,
         SoftwareProposalItem,
         TechnicianAssignment,
@@ -161,7 +161,7 @@ const dataSource = new DataSource({
     ReplacementItem,
     // Software entities
     Software,
-    AssetSoftware,
+    ComputerSoftware,
     SoftwareProposal,
     SoftwareProposalItem,
     TechnicianAssignment,

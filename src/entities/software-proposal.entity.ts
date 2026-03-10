@@ -27,6 +27,9 @@ export class SoftwareProposal {
     @Column({ nullable: true, comment: 'Người duyệt đề xuất' })
     approverId?: string;
 
+    @Column({ nullable: true, comment: 'Kỹ thuật viên tiếp nhận và thay thế' })
+    technicianId?: string;
+
     @Column({ comment: 'Phòng máy cần trang bị phần mềm' })
     roomId: string;
 
@@ -54,6 +57,10 @@ export class SoftwareProposal {
     @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'approverId' })
     approver?: User;
+
+    @ManyToOne(() => User, { nullable: true })
+    @JoinColumn({ name: 'technicianId' })
+    technician?: User;
 
     @ManyToOne(() => Room)
     @JoinColumn({ name: 'roomId' })

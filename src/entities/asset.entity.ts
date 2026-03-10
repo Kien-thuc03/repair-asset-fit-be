@@ -135,14 +135,6 @@ export class Asset {
     @OneToMany(() => Alert, (alert) => alert.asset)
     alerts?: Alert[];
 
-    @ManyToMany(() => Software, (software) => software.assets)
-    @JoinTable({
-        name: 'asset_software',
-        joinColumn: { name: 'assetId', referencedColumnName: 'id' },
-        inverseJoinColumn: { name: 'softwareId', referencedColumnName: 'id' },
-    })
-    software?: Software[];
-
     @OneToMany(() => RepairRequest, (repairRequest) => repairRequest.computerAsset)
     repairRequests?: RepairRequest[];
 

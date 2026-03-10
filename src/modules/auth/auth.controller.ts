@@ -12,6 +12,8 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { User } from 'src/entities/user.entity';
 import { UpdateProfileDto } from './dtos/user-profile.dto';
 import { UserProfileResponseDto } from './dtos/user-profile-response.dto';
+import { ForgotPasswordDto } from './dtos/forgot-password.dto';
+import { ResetPasswordDto } from './dtos/reset-password.dto';
 
 @ApiTags('Auth')
 @Controller('api/v1/auth')
@@ -77,5 +79,36 @@ export class AuthController {
     @ApiBearerAuth()
     async updateProfile(@Body() updateProfileDto: UpdateProfileDto, @CurrentUser() user: User): Promise<UserProfileResponseDto> {
         return this.authService.updateProfile(updateProfileDto, user);
+    }
+
+    /**
+     * Quên mật khẩu
+     * @description Gửi email chứa link đặt lại mật khẩu
+     * @param forgotPasswordDto DTO chứa email
+     * @returns Message xác nhận đã gửi email
+     */
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Request password reset' })
+    @ApiResponse({ status: 200, description: 'Password reset email sent successfully' })
+    @ApiResponse({ status: 400, description: 'Bad Request' })
+    async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
+        return this.authService.forgotPassword(forgotPasswordDto);
+    }
+
+    /**
+     * Đặt lại mật khẩu
+     * @description Đặt lại mật khẩu mới với token từ email
+     * @param resetPasswordDto DTO chứa token, mật khẩu mới và xác nhận mật khẩu
+     * @returns Message xác nhận đã đặt lại mật khẩu thành công
+     */
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Reset password with token' })
+    @ApiResponse({ status: 200, description: 'Password reset successfully' })
+    @ApiResponse({ status: 400, description: 'Bad Request' })
+    @ApiResponse({ status: 404, description: 'Token not found or expired' })
+    async resetPassword(@Body() resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+        return this.authService.resetPassword(resetPasswordDto);
     }
 }

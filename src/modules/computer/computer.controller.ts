@@ -1,0 +1,980 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  HttpCode,
+  HttpStatus,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiBody,
+} from "@nestjs/swagger";
+import { ComputerService } from "./computer.service";
+import { CreateComputerDto } from "./dto/create-computer.dto";
+import { UpdateComputerDto } from "./dto/update-computer.dto";
+import { AvailableComponentsFilterDto } from "./dto/available-components-filter.dto";
+import {
+  GetComputersFilterDto,
+  GetComputersResponseDto,
+} from "./dto/get-computers-filter.dto";
+import { GetComputerDetailResponseDto } from "./dto/get-computer-detail-response.dto";
+import {
+  ReplaceComponentDto,
+  ReplaceMultipleComponentsDto,
+} from "./dto/replace-component.dto";
+import { AddStockFromProposalDto } from "./dto/add-stock-from-proposal.dto";
+import { CreateComponentDto } from "./dto/create-component.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { User } from "../../entities/user.entity";
+
+@ApiTags("Computer & Components")
+@Controller("computer")
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class ComputerController {
+  constructor(private readonly computerService: ComputerService) {}
+
+  /**
+   * GET /computer/room/:roomId
+   * Lấy tất cả máy tính trong một phòng cụ thể
+   *
+   * @param roomId - UUID của phòng
+   * @returns Danh sách máy tính kèm thông tin asset, room và components
+   */
+  @Get("room/:roomId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy tất cả máy tính trong một phòng cụ thể",
+    description: "API lấy tất cả máy tính trong một phòng cụ thể theo roomId.",
+  })
+  getComputersByRoom(@Param("roomId") roomId: string) {
+    return this.computerService.getComputersByRoom(roomId);
+  }
+
+  /**
+   * GET /computer/:id
+   * Lấy thông tin chi tiết đầy đủ của một máy tính
+   * Bao gồm: asset, room, components, software, repair summary
+   *
+   * @param id - UUID của máy tính hoặc Asset ID
+   * @returns Thông tin chi tiết đầy đủ của máy tính
+   */
+  @Get(":id")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin chi tiết đầy đủ của một máy tính",
+    description: `
+      API lấy thông tin chi tiết đầy đủ của một máy tính theo Computer ID hoặc Asset ID.
+      
+      **Thông tin trả về:**
+      - **Computer**: ID, số máy, ghi chú
+      - **Asset**: Mã KT, mã TSCĐ, tên, thông số, trạng thái, ngày nhập, xuất xứ, danh mục
+      - **Room**: Tên phòng, mã phòng, tòa nhà, tầng, đơn vị
+      - **Components**: Danh sách linh kiện (loại, tên, thông số, serial, trạng thái, ngày lắp đặt)
+      - **Software**: Danh sách phần mềm (tên, version, publisher, license, ngày cài đặt)
+      - **Repair Summary**: Thống kê lịch sử sửa chữa (tổng số, đang xử lý, hoàn thành)
+      
+      **Đặc điểm:**
+      - Hỗ trợ tìm kiếm bằng Computer ID hoặc Asset ID
+      - Tự động join tất cả quan hệ cần thiết
+      - Sắp xếp components theo loại và ngày lắp đặt
+      - Sắp xếp software theo ngày cài đặt
+      - Tính toán thống kê repair requests
+      
+      **Use cases:**
+      - Xem chi tiết máy tính trong giao diện quản lý thiết bị
+      - Kiểm tra thông tin đầy đủ trước khi bảo trì/sửa chữa
+      - Xem lịch sử phần mềm và linh kiện của máy tính
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy thông tin chi tiết máy tính thành công",
+    type: GetComputerDetailResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Không tìm thấy máy tính với ID được cung cấp",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Chưa xác thực",
+  })
+  getComputerDetail(@Param("id") id: string) {
+    return this.computerService.getComputerDetail(id);
+  }
+
+  /**
+   * GET /computer
+   * Lấy danh sách máy tính với filter và pagination
+   * Dành cho giao diện quản lý thiết bị của kỹ thuật viên
+   *
+   * @param filterDto - Query parameters cho filter và pagination
+   * @returns Danh sách máy tính với thông tin đầy đủ, pagination và summary
+   */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy danh sách máy tính với filter và pagination",
+    description: `
+      API lấy danh sách máy tính với đầy đủ thông tin cho giao diện quản lý thiết bị.
+      
+      **Thông tin trả về:**
+      - Thông tin tài sản (asset): ID, mã KT, mã TSCĐ, tên, thông số, trạng thái, ngày nhập, xuất xứ
+      - Thông tin phòng (room): ID, tên, số phòng, mã phòng, tòa nhà, tầng
+      - Danh sách linh kiện (components): Loại, tên, thông số, serial, trạng thái, ngày lắp đặt
+      - Thống kê: Tổng số máy tính, phân bổ theo trạng thái
+      
+      **Filter hỗ trợ:**
+      - Tìm kiếm theo tên, mã KT, mã TSCĐ, số máy
+      - Lọc theo trạng thái tài sản (IN_USE, DAMAGED, etc.)
+      - Lọc theo tòa nhà, tầng, phòng
+      - Lọc theo danh mục
+      - Sắp xếp theo nhiều tiêu chí
+      - Phân trang linh hoạt (mặc định: page=1, limit=12)
+      
+      **Lưu ý:**
+      - Nếu không truyền query params, sẽ trả về trang đầu tiên với 12 items
+      - Có thể kết hợp nhiều filter cùng lúc
+      - Summary statistics luôn tính trên toàn bộ dữ liệu (không bị ảnh hưởng bởi filter)
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy danh sách máy tính thành công",
+    type: GetComputersResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Chưa xác thực",
+  })
+  getComputersWithFilter(@Query() filterDto: GetComputersFilterDto) {
+    return this.computerService.getComputersWithFilter(filterDto);
+  }
+
+  /**
+   * GET /computer/component/:componentId
+   * Lấy thông tin chi tiết một component theo ID
+   * Trả về thông tin component và computer chứa component đó
+   *
+   * @param componentId - UUID của component
+   * @returns Thông tin component và computer
+   */
+  /**
+   * GET /computer/components/stock
+   * Lấy danh sách tất cả linh kiện có trạng thái IN_STOCK (trong kho)
+   *
+   * @returns Danh sách linh kiện trong kho
+   */
+  @Get("components/stock")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy danh sách linh kiện trong kho",
+    description: `
+      API lấy danh sách tất cả linh kiện có trạng thái IN_STOCK (đang trong kho).
+      
+      **Dữ liệu trả về bao gồm:**
+      - Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật, serial number)
+      - Thông tin máy tính/asset chứa linh kiện
+      - Vị trí (tòa nhà, phòng, tầng)
+      - Ngày nhập kho
+      - Ghi chú
+      
+      **Use Cases:**
+      - Xem danh sách linh kiện có sẵn trong kho
+      - Quản lý tồn kho linh kiện
+      - Chọn linh kiện để thay thế khi sửa chữa
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách linh kiện trong kho thành công",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  getStockComponents() {
+    return this.computerService.getStockComponents();
+  }
+
+  @Get("component/:componentId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin chi tiết một component theo ID",
+    description: `
+      API lấy thông tin chi tiết của một component và computer chứa component đó.
+      
+      **Thông tin trả về:**
+      - Component: ID, loại, tên, thông số, serial, status, ngày lắp/tháo, ghi chú
+      - Computer: ID, số máy, thông tin asset (ID, tên, mã KT, mã TSCĐ, trạng thái), thông tin phòng
+      
+      **Use case:**
+      - Lấy computerId từ componentId để gọi API replace component
+      - Xem thông tin chi tiết component và máy tính chứa nó
+    `,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Lấy thông tin component thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Lấy thông tin component thành công",
+        data: {
+          component: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            componentType: "RAM",
+            name: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            status: "PENDING_REPLACEMENT",
+            installedAt: "2024-01-15T10:00:00.000Z",
+          },
+          computer: {
+            id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+            machineLabel: "01",
+            asset: {
+              id: "e7e6a875-7ca7-4994-81ff-98b2be25d557",
+              name: "Máy vi tính để bàn đồng bộ",
+              ktCode: "19-0210/01",
+            },
+            room: {
+              id: "room-id",
+              name: "A01.03",
+              roomCode: "A01.03",
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Không tìm thấy component",
+  })
+  getComponentById(@Param("componentId") componentId: string) {
+    return this.computerService.getComponentById(componentId);
+  }
+
+  /**
+   * GET /computer/:computerId/components
+   * Lấy tất cả components của một máy tính cụ thể
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Danh sách components của máy tính
+   */
+  @Get(":computerId/components")
+  @HttpCode(HttpStatus.OK)
+  getComponentsByComputer(@Param("computerId") computerId: string) {
+    return this.computerService.getComponentsByComputer(computerId);
+  }
+
+  /**
+   * GET /computer/asset/:assetId/components
+   * Lấy tất cả components của một tài sản máy tính (theo Asset ID)
+   *
+   * @param assetId - UUID của tài sản
+   * @returns Danh sách components của máy tính
+   */
+  @Get("asset/:assetId/components")
+  @HttpCode(HttpStatus.OK)
+  getComponentsByAssetId(@Param("assetId") assetId: string) {
+    return this.computerService.getComponentsByAssetId(assetId);
+  }
+
+  @Get("current-user/available-components")
+  @ApiOperation({
+    summary:
+      "Lấy danh sách TẤT CẢ linh kiện có status = FAULTY để lập đề xuất thay thế",
+    description: `
+      Lấy danh sách TẤT CẢ linh kiện có trạng thái FAULTY để kỹ thuật viên có thể lập đề xuất thay thế.
+      
+      **✅ THAY ĐỔI QUAN TRỌNG:**
+      - API này giờ lấy **TẤT CẢ FAULTY components** trong hệ thống
+      - **KHÔNG giới hạn** theo kỹ thuật viên hay repair requests nữa
+      - Cho phép tạo đề xuất thay thế cho bất kỳ linh kiện FAULTY nào
+      
+      **Mục đích:**
+      - Hiển thị danh sách TẤT CẢ linh kiện bị lỗi (status = FAULTY)
+      - Kỹ thuật viên có thể chọn nhiều linh kiện để tạo đề xuất thay thế hàng loạt
+      - Tự động lọc ra các linh kiện đã có trong đề xuất (status = PENDING_REPLACEMENT)
+      
+      **Dữ liệu trả về bao gồm:**
+      - ✅ Thông tin linh kiện (ID, tên, loại, thông số kỹ thuật, status)
+      - ✅ Thông tin tài sản (máy tính) chứa linh kiện
+      - ✅ Vị trí (tòa nhà, phòng, tầng, số máy)
+      - ✅ Thông tin yêu cầu sửa chữa (mã, trạng thái, mô tả) - **NULLABLE nếu không có**
+      
+      **Tính năng lọc:**
+      - Tìm kiếm theo mã YCSC (requestCode) - nếu có
+      - Theo loại linh kiện (CPU, RAM, GPU, v.v.)
+      - Tìm kiếm theo tên linh kiện, tài sản, mã KT
+      - Theo vị trí (tòa nhà, tầng, phòng)
+      - Loại trừ linh kiện đã có trong đề xuất (mặc định: true)
+      
+      **⚠️ AUTO FILTERS (KHÔNG THỂ OVERRIDE):**
+      - ✅ **CHỈ lấy components có status = FAULTY** (91 components)
+      - ✅ **Components với status PENDING_REPLACEMENT sẽ KHÔNG được lấy** (đã trong proposal)
+      - ✅ **Components với status INSTALLED, REMOVED, IN_STOCK cũng không được lấy**
+      
+      **Use Cases:**
+      - Kỹ thuật viên xem tất cả linh kiện bị lỗi để lập đề xuất
+      - Tạo đề xuất thay thế hàng loạt cho nhiều linh kiện cùng lúc
+      - Quản lý và theo dõi linh kiện cần thay thế trong toàn hệ thống
+    `,
+  })
+  @ApiQuery({
+    name: "requestCode",
+    required: false,
+    description: "Tìm kiếm theo mã YCSC",
+    type: String,
+    example: "YCSC-2025-0001",
+  })
+  @ApiQuery({
+    name: "componentType",
+    required: false,
+    description: "Lọc theo loại linh kiện (có thể truyền nhiều giá trị)",
+    isArray: true,
+    enum: [
+      "CPU",
+      "RAM",
+      "GPU",
+      "STORAGE",
+      "MAINBOARD",
+      "PSU",
+      "COOLER",
+      "MONITOR",
+      "KEYBOARD",
+      "MOUSE",
+      "NETWORK_CARD",
+      "SOUND_CARD",
+      "OTHER",
+    ],
+    example: ["RAM", "CPU"],
+  })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    description: "Tìm kiếm theo tên linh kiện, tài sản, mã tài sản",
+    type: String,
+  })
+  @ApiQuery({
+    name: "building",
+    required: false,
+    description: "Lọc theo tòa nhà",
+    type: String,
+    example: "A",
+  })
+  @ApiQuery({
+    name: "floor",
+    required: false,
+    description: "Lọc theo tầng",
+    type: String,
+    example: "1",
+  })
+  @ApiQuery({
+    name: "roomName",
+    required: false,
+    description: "Lọc theo phòng",
+    type: String,
+    example: "A01.03",
+  })
+  @ApiQuery({
+    name: "excludeInProposal",
+    required: false,
+    description: "Loại trừ linh kiện đã có trong đề xuất",
+    type: Boolean,
+    example: true,
+  })
+  @ApiQuery({
+    name: "page",
+    required: false,
+    description: "Số trang (từ 1)",
+    type: Number,
+    example: 1,
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Số lượng mỗi trang",
+    type: Number,
+    example: 10,
+  })
+  @ApiQuery({
+    name: "sortBy",
+    required: false,
+    description: "Sắp xếp theo trường",
+    enum: ["createdAt", "componentName", "requestCode"],
+    example: "createdAt",
+  })
+  @ApiQuery({
+    name: "sortOrder",
+    required: false,
+    description: "Thứ tự sắp xếp",
+    enum: ["ASC", "DESC"],
+    example: "DESC",
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy danh sách linh kiện khả dụng thành công",
+    schema: {
+      example: {
+        data: [
+          {
+            componentId: "35560238-96ec-4242-9e17-be3a0e3b23cc",
+            componentName: "Logitech MX Master 3",
+            componentType: "MOUSE",
+            componentSpecs: "Wireless Mouse 4000 DPI",
+            componentStatus: "FAULTY",
+            installedAt: "2024-01-15T10:00:00.000Z",
+            assetId: "48b11d82-dee9-4003-b34d-d6063cbb230a",
+            assetName: "PC ASUS VivoBook",
+            ktCode: "19-0210/01",
+            roomName: "A01.03",
+            buildingName: "A",
+            floor: "1",
+            machineLabel: "01",
+            // Thông tin repair request (nullable - có thể null nếu component chưa có repair request)
+            repairRequestId: "fda02b10-3ca8-4a17-9c16-97f3ca753ba4",
+            requestCode: "YCSC-2025-0002",
+            repairStatus: "ĐÃ_TIẾP_NHẬN",
+            repairDescription: "Chuột không hoạt động",
+            repairCreatedAt: "2025-11-07T10:30:00.000Z",
+          },
+        ],
+        total: 91,
+        page: 1,
+        limit: 10,
+        totalPages: 10,
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa đăng nhập hoặc token không hợp lệ",
+  })
+  async getAvailableComponents(
+    @Query() filter: AvailableComponentsFilterDto,
+    @CurrentUser() user: User
+  ) {
+    return this.computerService.getAvailableComponents(filter, user);
+  }
+
+  /**
+   * PATCH /computer/:computerId/replace-component
+   * Thay thế một linh kiện trong máy tính
+   * Cập nhật status linh kiện cũ thành REMOVED và thêm linh kiện mới với status INSTALLED
+   *
+   * @param computerId - UUID của máy tính
+   * @param replaceDto - Thông tin thay thế linh kiện
+   * @returns Thông tin linh kiện cũ và mới
+   */
+  @Patch(":computerId/replace-component")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Thay thế một linh kiện trong máy tính",
+    description: `
+      API thay thế một linh kiện trong máy tính khi có linh kiện mới.
+      
+      **Quy trình:**
+      1. Cập nhật status linh kiện cũ thành REMOVED và set removedAt
+      2. Tạo linh kiện mới với status INSTALLED và set installedAt
+      3. Linh kiện mới sẽ kế thừa componentType từ linh kiện cũ
+      
+      **Dữ liệu cần truyền:**
+      - oldComponentId: UUID của linh kiện cũ cần thay thế
+      - newItemName: Tên linh kiện mới
+      - newItemSpecs: Thông số kỹ thuật linh kiện mới
+      - serialNumber (optional): Số serial linh kiện mới
+      - notes (optional): Ghi chú về việc thay thế
+      
+      **Sử dụng khi:**
+      - Hoàn thành đề xuất thay thế linh kiện
+      - Kỹ thuật viên đã thay thế linh kiện thành công
+      - Cần cập nhật thông tin linh kiện trong hệ thống
+      
+      **Lưu ý:**
+      - Linh kiện cũ phải thuộc máy tính được chỉ định
+      - Sử dụng transaction để đảm bảo tính nhất quán dữ liệu
+      - Tự động ghi lại thời gian thay thế
+    `,
+  })
+  @ApiBody({ type: ReplaceComponentDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Thay thế linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Thay thế linh kiện RAM thành công",
+        data: {
+          computer: {
+            id: "123e4567-e89b-12d3-a456-426614174000",
+            machineLabel: "01",
+            assetName: "PC ASUS VivoBook",
+          },
+          oldComponent: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            name: "RAM",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            status: "REMOVED",
+            removedAt: "2025-11-26T10:00:00.000Z",
+          },
+          newComponent: {
+            id: "789e4567-e89b-12d3-a456-426614174999",
+            name: "RAM Kingston",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR4 3200MHz",
+            serialNumber: "SN123456789",
+            status: "INSTALLED",
+            installedAt: "2025-11-26T10:00:00.000Z",
+            notes: "Thay thế cho linh kiện RAM",
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính hoặc linh kiện",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Linh kiện không thuộc máy tính này",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  replaceComponent(
+    @Param("computerId") computerId: string,
+    @Body() replaceDto: ReplaceComponentDto
+  ) {
+    return this.computerService.replaceComponent(computerId, replaceDto);
+  }
+
+  /**
+   * PATCH /computer/add-stock-component
+   * Thêm linh kiện mới về kho từ đề xuất thay thế (Bulk Action)
+   * Xử lý tất cả các items trong đề xuất cùng lúc
+   *
+   * @param addStockDto - Thông tin đề xuất
+   * @returns Kết quả xử lý
+   */
+  @Patch("add-stock-component")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Thêm linh kiện mới về kho từ đề xuất (Bulk Action)",
+    description: `
+      API thêm linh kiện mới về kho hàng loạt dựa trên đề xuất thay thế.
+      
+      **✨ Tính năng:**
+      - ✅ Xử lý TẤT CẢ items trong đề xuất cùng lúc
+      - ✅ Tự động tạo linh kiện mới với status IN_STOCK
+      - ✅ Tự động cập nhật newlyPurchasedComponentId cho từng item
+      - ✅ Bỏ qua các items đã được xử lý trước đó
+      
+      **Quy trình:**
+      1. Truyền proposalId của đề xuất đã được duyệt và mua hàng
+      2. Hệ thống duyệt qua từng item trong đề xuất
+      3. Tạo linh kiện mới tương ứng cho mỗi item
+      4. Trả về kết quả tổng hợp
+      
+      **Dữ liệu cần truyền:**
+      - proposalId: UUID của đề xuất (bắt buộc)
+      - notes: Ghi chú chung (tùy chọn)
+      
+      **Sử dụng khi:**
+      - Hàng về kho theo đề xuất, muốn nhập kho nhanh tất cả
+      - Thay thế cho việc nhập từng linh kiện một
+    `,
+  })
+  @ApiBody({ type: AddStockFromProposalDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xử lý nhập kho thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Đã xử lý nhập kho cho đề xuất. Thành công: 3/3",
+        data: {
+          proposalId: "ef6c626b-b3c1-4545-9a50-3c879aa79664",
+          totalItems: 3,
+          successCount: 3,
+          details: [
+            {
+              itemId: "fdad6ae9-cedd-49a8-92eb-7a4b887e3198",
+              status: "SUCCESS",
+              newComponent: {
+                id: "new-uuid-1",
+                name: "Intel Core i5 10TH GEN",
+                type: "CPU",
+              },
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy đề xuất hoặc items",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  addStockComponent(@Body() addStockDto: AddStockFromProposalDto) {
+    return this.computerService.addStockFromProposal(addStockDto);
+  }
+
+  /**
+   * POST /computer/component
+   * Thêm linh kiện mới vào kho
+   * Linh kiện sẽ được tạo với status IN_STOCK
+   *
+   * @param createComponentDto - Dữ liệu tạo linh kiện mới
+   * @returns Thông tin linh kiện vừa được tạo
+   */
+  @Post("component")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Thêm linh kiện mới vào kho",
+    description: `
+      API thêm linh kiện mới vào kho với trạng thái IN_STOCK.
+      
+      **Thông tin cần cung cấp:**
+      - **computerAssetId**: ID của máy tính/asset để lưu linh kiện (có thể là một computer đại diện cho kho)
+      - **componentType**: Loại linh kiện (CPU, RAM, STORAGE, ...)
+      - **name**: Tên/Model của linh kiện
+      - **componentSpecs**: Thông số kỹ thuật (tùy chọn)
+      - **serialNumber**: Số serial (tùy chọn)
+      - **notes**: Ghi chú (tùy chọn)
+      
+      **Kết quả:**
+      - Tạo mới component với status = IN_STOCK
+      - Trả về thông tin component vừa được tạo
+      
+      **Use cases:**
+      - Nhập linh kiện mới vào kho
+      - Thêm linh kiện dự phòng vào hệ thống
+      - Quản lý tồn kho linh kiện
+    `,
+  })
+  @ApiBody({
+    type: CreateComponentDto,
+    description: "Dữ liệu tạo linh kiện mới",
+    examples: {
+      example1: {
+        summary: "Thêm RAM vào kho",
+        value: {
+          computerAssetId: "c2179e7d-fca7-4020-b89d-3cebf773e1a4",
+          componentType: "RAM",
+          name: "Kingston Fury Beast DDR5 16GB",
+          componentSpecs: "16GB 5200MHz",
+          serialNumber: "SN123456789ABC",
+          notes: "Linh kiện mới nhập kho",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: "Tạo linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Đã thêm linh kiện vào kho thành công",
+        data: {
+          id: "new-component-uuid",
+          computerAssetId: "c2179e7d-fca7-4020-b89d-3cebf773e1a4",
+          componentType: "RAM",
+          name: "Kingston Fury Beast DDR5 16GB",
+          componentSpecs: "16GB 5200MHz",
+          serialNumber: "SN123456789ABC",
+          status: "IN_STOCK",
+          installedAt: "2024-01-15T10:30:00.000Z",
+          notes: "Linh kiện mới nhập kho",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Dữ liệu không hợp lệ",
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính với computerAssetId",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  createComponent(@Body() createComponentDto: CreateComponentDto) {
+    return this.computerService.createComponent(createComponentDto);
+  }
+
+  /**
+   * GET /computer/:computerId/qr-code
+   * Generate QR code cho máy tính
+   * QR code chứa computerId để quét và tự động điền thông tin khi tạo repair request
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Base64 string của QR code image
+   */
+  @Get(":computerId/qr-code")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Generate QR code cho máy tính",
+    description: `
+      API tạo QR code cho máy tính để người dùng quét bằng mobile/tablet.
+      
+      **QR code chứa:**
+      - computerId: UUID của máy tính
+      - type: REPAIR_REQUEST
+      - timestamp: Thời gian tạo QR
+      
+      **Sử dụng khi:**
+      - In QR code dán lên máy tính
+      - Hiển thị QR code trên màn hình
+      - Người dùng cần báo lỗi nhanh bằng mobile
+      
+      **Quy trình:**
+      1. Người dùng quét QR code bằng camera mobile/tablet
+      2. App đọc computerId từ QR
+      3. Gọi API /computer/:computerId/repair-info để lấy thông tin
+      4. Tự động điền thông tin vào form tạo repair request
+      
+      **Response:**
+      - Base64 string của QR code image (data:image/png;base64,...)
+      - Có thể hiển thị trực tiếp trong <img> tag
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Generate QR code thành công",
+    schema: {
+      example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  async generateQRCode(@Param("computerId") computerId: string) {
+    const qrCode = await this.computerService.generateQRCode(computerId);
+    return qrCode;
+  }
+
+  /**
+   * GET /computer/:computerId/repair-info
+   * Lấy thông tin máy tính để tạo repair request từ QR code
+   * Trả về tất cả thông tin cần thiết để auto-fill form
+   *
+   * @param computerId - UUID của máy tính
+   * @returns Thông tin đầy đủ của máy tính để tạo repair request
+   */
+  @Get(":computerId/repair-info")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Lấy thông tin máy tính để tạo repair request từ QR code",
+    description: `
+      API lấy thông tin máy tính sau khi quét QR code.
+      Trả về tất cả thông tin cần thiết để tự động điền vào form tạo repair request.
+      
+      **Thông tin trả về:**
+      - **Computer**: ID, số máy, ghi chú
+      - **Asset**: ID (computerAssetId cho repair request), mã KT, tên, thông số, trạng thái
+      - **Room**: Vị trí (tòa nhà, tầng, phòng)
+      - **Available Components**: Danh sách linh kiện có thể báo lỗi (status = INSTALLED)
+      - **Installed Software**: Danh sách phần mềm đã cài đặt
+      - **Has Active Repair**: Kiểm tra máy đang có yêu cầu sửa chữa chưa
+      
+      **Auto-fill logic:**
+      - computerAssetId: asset.id ← Bắt buộc, tự động điền
+      - Room info: Hiển thị thông tin vị trí máy
+      - Components list: Cho phép chọn linh kiện bị lỗi
+      - Software list: Cho phép chọn phần mềm gặp sự cố
+      - errorType: Người dùng phải chọn
+      - description: Người dùng phải nhập
+      
+      **Use case:**
+      1. Mobile app quét QR code → lấy computerId
+      2. Gọi API này với computerId
+      3. Tự động điền computerAssetId vào form
+      4. Hiển thị thông tin máy và vị trí
+      5. Cho phép chọn components/software bị lỗi
+      6. Người dùng chọn errorType và nhập description
+      7. Submit form tạo repair request
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Lấy thông tin thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Lấy thông tin máy tính thành công",
+        data: {
+          computer: {
+            id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+            machineLabel: "01",
+            notes: null,
+          },
+          asset: {
+            id: "e7e6a875-7ca7-4994-81ff-98b2be25d557",
+            ktCode: "19-0210/01",
+            fixedCode: "FX-2024-001",
+            name: "Máy vi tính để bàn đồng bộ - Dell OptiPlex 3010 MT",
+            specs: "Intel Core i5, 8GB RAM, 256GB SSD",
+            status: "IN_USE",
+            categoryName: "Máy tính",
+          },
+          room: {
+            id: "room-id",
+            name: "A01.03",
+            roomNumber: "A01.03",
+            roomCode: "A01.03",
+            building: "A",
+            floor: "1",
+            unitName: "Khoa CNTT",
+          },
+          availableComponents: [
+            {
+              id: "component-1",
+              componentType: "CPU",
+              name: "Intel Core i5",
+              componentSpecs: "Intel Core i5-10400",
+              serialNumber: "SN123456",
+            },
+            {
+              id: "component-2",
+              componentType: "RAM",
+              name: "RAM",
+              componentSpecs: "16GB DDR4 3200MHz",
+              serialNumber: null,
+            },
+          ],
+          installedSoftware: [
+            {
+              id: "software-1",
+              name: "Microsoft Office",
+              version: "2021",
+              publisher: "Microsoft",
+              installationDate: "2024-01-15",
+            },
+          ],
+          hasActiveRepair: false,
+          activeRepairInfo: null,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy máy tính",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  getComputerRepairInfo(@Param("computerId") computerId: string) {
+    return this.computerService.getComputerRepairInfo(computerId);
+  }
+
+  /**
+   * DELETE /computer/component/:componentId
+   * Xóa một linh kiện khỏi hệ thống
+   * Kiểm tra ràng buộc trước khi xóa (repair requests, replacement items)
+   *
+   * @param componentId - UUID của linh kiện cần xóa
+   * @returns Thông tin linh kiện đã xóa
+   */
+  @Delete("component/:componentId")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Xóa một linh kiện khỏi hệ thống",
+    description: `
+      API xóa một linh kiện khỏi hệ thống sau khi kiểm tra các ràng buộc.
+      
+      **Quy trình:**
+      1. Kiểm tra linh kiện có tồn tại không
+      2. Kiểm tra linh kiện có đang được sử dụng trong repair requests không
+      3. Kiểm tra linh kiện có đang được sử dụng trong replacement items không
+      4. Nếu không có ràng buộc, xóa linh kiện
+      5. Trả về thông tin linh kiện đã xóa
+      
+      **Ràng buộc:**
+      - Không thể xóa linh kiện đang được sử dụng trong yêu cầu sửa chữa
+      - Không thể xóa linh kiện đang được sử dụng trong đề xuất thay thế
+      - Phải xóa hoặc cập nhật các bản ghi liên quan trước khi xóa linh kiện
+      
+      **Sử dụng khi:**
+      - Xóa linh kiện đã bị hỏng và không còn sử dụng
+      - Xóa linh kiện nhập sai thông tin
+      - Dọn dẹp dữ liệu không cần thiết
+      
+      **Lưu ý:**
+      - Đây là thao tác xóa vĩnh viễn (hard delete)
+      - Không thể khôi phục sau khi xóa
+      - Cần quyền phù hợp để thực hiện
+    `,
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Xóa linh kiện thành công",
+    schema: {
+      example: {
+        success: true,
+        message: "Xóa linh kiện RAM thành công",
+        data: {
+          deletedComponent: {
+            id: "21f98edb-fda6-41ab-8f6c-dd56ebd72a59",
+            name: "RAM",
+            componentType: "RAM",
+            componentSpecs: "16GB DDR3 1600MHz",
+            serialNumber: "SN123456789",
+            status: "REMOVED",
+            computer: {
+              id: "f49b0d8c-bcba-419c-b6e8-ce8e23745a78",
+              machineLabel: "01",
+              assetName: "PC ASUS VivoBook",
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Không tìm thấy linh kiện",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Linh kiện đang được sử dụng, không thể xóa",
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: "Chưa xác thực",
+  })
+  deleteComponent(@Param("componentId") componentId: string) {
+    return this.computerService.deleteComponent(componentId);
+  }
+}
