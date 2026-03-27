@@ -15,17 +15,15 @@ import { UserStatus } from 'src/entities/user.entity';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({
-    description: 'Tên đăng nhập của người dùng',
-    example: 'john_doe',
-    minLength: 3,
-    maxLength: 50,
+    description: 'Tên đăng nhập của người dùng (mã nhân viên - 8 chữ số)',
+    example: '10000001',
+    minLength: 8,
+    maxLength: 8,
   })
   @IsOptional()
   @IsString({ message: 'Tên đăng nhập phải là chuỗi ký tự' })
-  @MinLength(3, { message: 'Tên đăng nhập phải có ít nhất 3 ký tự' })
-  @MaxLength(50, { message: 'Tên đăng nhập không được vượt quá 50 ký tự' })
-  @Matches(/^[a-zA-Z0-9_]+$/, {
-    message: 'Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới',
+  @Matches(/^[0-9]{8}$/, {
+    message: 'Tên đăng nhập phải là chuỗi gồm đúng 8 chữ số',
   })
   username?: string;
 
@@ -76,8 +74,8 @@ export class UpdateUserDto {
   })
   @IsOptional()
   @IsString({ message: 'Số điện thoại phải là chuỗi ký tự' })
-  @Matches(/^(\+84|0)[0-9]{9,10}$/, {
-    message: 'Số điện thoại không hợp lệ (định dạng Việt Nam)',
+  @Matches(/^(\+84|84|0)(3|5|7|8|9)[0-9]{8}$/, {
+    message: 'Số điện thoại không đúng định dạng Việt Nam (VD: 0901234567, +84901234567)',
   })
   phoneNumber?: string;
 
