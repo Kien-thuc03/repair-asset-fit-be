@@ -87,30 +87,14 @@ export class RoomsService {
     room.createdBy = currentUser;
     room.roomCode = roomCode;
 
-    // Handle adjacent rooms if provided
-    if (
-      createRoomDto.adjacentRoomIds &&
-      createRoomDto.adjacentRoomIds.length > 0
-    ) {
-      const adjacentRooms = await this.roomRepository.findBy({
-        id: In(createRoomDto.adjacentRoomIds),
-      });
-      room.adjacentRooms = adjacentRooms;
-    }
 
     const savedRoom = await this.roomRepository.save(room);
 
-    // if there are adjacent rooms, update their adjacentRooms to include this new room
-    if (savedRoom.adjacentRooms?.length > 0) {
-      for (const adjRoom of savedRoom.adjacentRooms) {
-        adjRoom.adjacentRooms = [...(adjRoom.adjacentRooms ?? []), savedRoom];
-        await this.roomRepository.save(adjRoom);
-      }
-    }
     // Fetch the room with all relations including adjacent rooms
     const roomWithRelations = await this.roomRepository.findOne({
       where: { id: savedRoom.id },
-      relations: ["unit", "createdBy", "adjacentRooms"],
+      // relations: ["unit", "createdBy", "adjacentRooms"],
+      relations: ["unit", "createdBy"],
     });
 
     return plainToInstance(RoomResponseDto, roomWithRelations, {
@@ -135,7 +119,8 @@ export class RoomsService {
 
   async findAll(): Promise<RoomResponseDto[]> {
     const rooms = await this.roomRepository.find({
-      relations: ["unit", "adjacentRooms"],
+      // relations: ["unit", "adjacentRooms"],
+      relations: ["unit"],
       order: { createdAt: "DESC" },
     });
 
@@ -157,7 +142,8 @@ export class RoomsService {
 
     const rooms = await this.roomRepository.find({
       where: { unitId },
-      relations: ["unit", "adjacentRooms"],
+      // relations: ["unit", "adjacentRooms"],
+      relations: ["unit"],
       order: { roomCode: "ASC" },
     });
 
@@ -169,7 +155,8 @@ export class RoomsService {
   async findOne(id: string): Promise<RoomResponseDto> {
     const room = await this.roomRepository.findOne({
       where: { id },
-      relations: ["unit", "createdBy", "adjacentRooms"],
+      // relations: ["unit", "createdBy", "adjacentRooms"],
+      relations: ["unit", "createdBy"],
     });
 
     if (!room) {
@@ -255,29 +242,13 @@ export class RoomsService {
     }
     room.roomCode = newRoomCode;
 
-    // Handle adjacent rooms if provided
-    if (
-      updateRoomDto.adjacentRoomIds &&
-      updateRoomDto.adjacentRoomIds.length > 0
-    ) {
-      const adjacentRooms = await this.roomRepository.findBy({
-        id: In(updateRoomDto.adjacentRoomIds),
-      });
-      room.adjacentRooms = adjacentRooms;
-    }
     const updatedRoom = await this.roomRepository.save(room);
 
-    // If there are adjacent rooms, update their adjacentRooms to include this new room
-    if (room.adjacentRooms?.length > 0) {
-      for (const adjRoom of room.adjacentRooms) {
-        adjRoom.adjacentRooms = [...(adjRoom.adjacentRooms ?? []), room];
-        await this.roomRepository.save(adjRoom);
-      }
-    }
 
     const roomWithRelations = await this.roomRepository.findOne({
       where: { id: updatedRoom.id },
-      relations: ["unit", "createdBy", "adjacentRooms"],
+      // relations: ["unit", "createdBy", "adjacentRooms"],
+      relations: ["unit", "createdBy"],
     });
 
     return plainToInstance(RoomResponseDto, roomWithRelations, {

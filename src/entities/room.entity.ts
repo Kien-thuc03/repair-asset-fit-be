@@ -43,13 +43,13 @@ export class Room {
     @Column()
     roomNumber: string;
 
-    @ManyToMany(() => Room, (room) => room.adjacentRooms)
-    @JoinTable({
-        name: 'room_adjacent_rooms',
-        joinColumn: { name: 'roomId', referencedColumnName: 'id' },
-        inverseJoinColumn: { name: 'adjacentRoomId', referencedColumnName: 'id' }
-    })
-    adjacentRooms: Room[];
+    // @ManyToMany(() => Room, (room) => room.adjacentRooms)
+    // @JoinTable({
+    //     name: 'room_adjacent_rooms',
+    //     joinColumn: { name: 'roomId', referencedColumnName: 'id' },
+    //     inverseJoinColumn: { name: 'adjacentRoomId', referencedColumnName: 'id' }
+    // })
+    // adjacentRooms: Room[];
 
     @Column({
         type: "enum",

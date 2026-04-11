@@ -38,10 +38,10 @@ export class RoomResponseDto {
   @ApiPropertyOptional({ description: 'Unit information' })
   unit?: Unit;
 
-  @Expose()
-  @Type(() => RoomResponseDto)
-  @ApiPropertyOptional({ description: 'Adjacent rooms', type: [RoomResponseDto] })
-  adjacentRooms?: RoomResponseDto[];
+  // @Expose()
+  // @Type(() => RoomResponseDto)
+  // @ApiPropertyOptional({ description: 'Adjacent rooms', type: [RoomResponseDto] })
+  // adjacentRooms?: RoomResponseDto[];
 
   @Expose()
   @ApiProperty({ description: 'Creation date' })
