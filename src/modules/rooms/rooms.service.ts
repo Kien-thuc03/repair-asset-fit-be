@@ -26,10 +26,22 @@ export class RoomsService {
     createRoomDto: CreateRoomDto,
     currentUser?: User
   ): Promise<RoomResponseDto> {
+    // --- Chuẩn hóa dữ liệu: đảm bảo "8" và "08" là cùng 1 phòng ---
+    const normalizedBuilding = createRoomDto.building.trim().toUpperCase();
+    const normalizedFloor = createRoomDto.floor.trim().replace(/^0+/, '') || '0'; // "08" -> "8", "00" -> "0"
+    const normalizedRoomNumber = createRoomDto.roomNumber.trim().replace(/^0+/, '') || '0';
+
+    const normalizedDto = {
+      ...createRoomDto,
+      building: normalizedBuilding,
+      floor: normalizedFloor,
+      roomNumber: normalizedRoomNumber,
+    };
+
     // Check if unit exists if unitId is provided
-    if (createRoomDto.unitId) {
+    if (normalizedDto.unitId) {
       const unit = await this.unitRepository.findOne({
-        where: { id: createRoomDto.unitId },
+        where: { id: normalizedDto.unitId },
       });
 
       if (!unit) {
@@ -37,27 +49,43 @@ export class RoomsService {
       }
     }
 
-    // Check for unique room location constraint
+    // Check for unique room location constraint (based on normalized values)
     const existingLocation = await this.roomRepository.findOne({
       where: {
-        building: createRoomDto.building,
-        floor: createRoomDto.floor,
-        roomNumber: createRoomDto.roomNumber,
+        building: normalizedDto.building,
+        floor: normalizedDto.floor,
+        roomNumber: normalizedDto.roomNumber,
+        unitId: normalizedDto.unitId ?? null,
       },
     });
 
     if (existingLocation) {
-      throw new ConflictException("Room with this location already exists");
+      throw new ConflictException(
+        `Phòng tại Tòa ${normalizedDto.building}, Tầng ${normalizedDto.floor}, Số phòng ${normalizedDto.roomNumber} đã tồn tại trong hệ thống`
+      );
     }
 
-    const room = this.roomRepository.create(createRoomDto);
-    room.createdBy = currentUser;
-    room.roomCode = await this.generateRoomCode(
-      createRoomDto.building,
-      createRoomDto.floor,
-      createRoomDto.roomNumber,
-      createRoomDto.unitId
+    // Generate roomCode and check uniqueness
+    const roomCode = await this.generateRoomCode(
+      normalizedDto.building,
+      normalizedDto.floor,
+      normalizedDto.roomNumber,
+      normalizedDto.unitId
     );
+
+    const existingRoomCode = await this.roomRepository.findOne({
+      where: { roomCode },
+    });
+
+    if (existingRoomCode) {
+      throw new ConflictException(
+        `Mã phòng "${roomCode}" đã tồn tại trong hệ thống. Hãy kiểm tra lại thông tin.`
+      );
+    }
+
+    const room = this.roomRepository.create(normalizedDto);
+    room.createdBy = currentUser;
+    room.roomCode = roomCode;
 
     // Handle adjacent rooms if provided
     if (
@@ -176,6 +204,11 @@ export class RoomsService {
       }
     }
 
+    // --- Chuẩn hóa dữ liệu ---
+    if (updateRoomDto.building) updateRoomDto.building = updateRoomDto.building.trim().toUpperCase();
+    if (updateRoomDto.floor) updateRoomDto.floor = updateRoomDto.floor.trim().replace(/^0+/, '') || '0';
+    if (updateRoomDto.roomNumber) updateRoomDto.roomNumber = updateRoomDto.roomNumber.trim().replace(/^0+/, '') || '0';
+
     // Check for unique room location constraint (excluding current room)
     if (
       updateRoomDto.building ??
@@ -191,21 +224,37 @@ export class RoomsService {
           building,
           floor,
           roomNumber,
+          unitId: updateRoomDto.unitId ?? room.unitId ?? null,
         },
       });
 
       if (existingLocation && existingLocation.id !== id) {
-        throw new ConflictException("Room with this location already exists");
+        throw new ConflictException(
+          `Phòng tại Tòa ${building}, Tầng ${floor}, Số phòng ${roomNumber} đã tồn tại trong hệ thống`
+        );
       }
     }
 
     Object.assign(room, updateRoomDto);
-    room.roomCode = await this.generateRoomCode(
+    // Regenerate roomCode after update
+    const newRoomCode = await this.generateRoomCode(
       room.building,
       room.floor,
       room.roomNumber,
       room.unitId
     );
+
+    // Check if new roomCode collides with another room
+    if (newRoomCode !== room.roomCode) {
+      const existingCode = await this.roomRepository.findOne({ where: { roomCode: newRoomCode } });
+      if (existingCode && existingCode.id !== id) {
+        throw new ConflictException(
+          `Mã phòng "${newRoomCode}" đã tồn tại trong hệ thống.`
+        );
+      }
+    }
+    room.roomCode = newRoomCode;
+
     // Handle adjacent rooms if provided
     if (
       updateRoomDto.adjacentRoomIds &&
